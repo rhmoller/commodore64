@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- C64 boot-screen vibe: blue screen, light-blue frame, "64" -->
+  <rect width="32" height="32" rx="6" fill="#352879"/>
+  <rect x="2.5" y="2.5" width="27" height="27" rx="5" fill="#352879" stroke="#7c6cff" stroke-width="2.5"/>
+  <text x="16" y="22" text-anchor="middle" font-family="'Courier New',monospace"
+        font-weight="700" font-size="16" fill="#b6acff">64</text>
+</svg>
