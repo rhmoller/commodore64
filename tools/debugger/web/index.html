@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VICE Debugger</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="disasm.js"></script>
+  <script src="charrom.js"></script>
+</head>
+<body>
+  <header class="toolbar">
+    <span class="brand">VICE&nbsp;DBG</span>
+    <span id="conn" class="conn off" title="connection">●</span>
+    <span id="viceaddr" class="dim"></span>
+    <span class="sep"></span>
+    <button id="btnStop"  title="Break (stop)">⏸ stop</button>
+    <button id="btnCont"  title="Continue (run)">▶ run</button>
+    <button id="btnStep"  title="Step one instruction">↳ step</button>
+    <button id="btnOver"  title="Step over (JSR as one)">⤼ over</button>
+    <button id="btnOut"   title="Step out (until RTS)">⤴ out</button>
+    <button id="btnFrame" title="Step one video frame (break at IRQ)">🎞 frame</button>
+    <button id="btnReset" title="Soft reset">↻ reset</button>
+    <span class="sep"></span>
+    <label class="live"><input type="checkbox" id="liveChk"> live</label>
+    <span class="sep"></span>
+    <span id="state" class="state">—</span>
+    <span id="pcreg" class="dim mono"></span>
+  </header>
+
+  <main class="grid">
+    <section class="panel" id="p-disasm">
+      <div class="phead">Disassembly <span class="dim" id="disHint"></span>
+        <input id="disGoto" class="goto" placeholder="addr" size="6"></div>
+      <div class="pbody mono" id="disasm"></div>
+    </section>
+
+    <section class="panel" id="p-regs">
+      <div class="phead">Registers</div>
+      <div class="pbody mono" id="regs"></div>
+      <div class="phead">Flags</div>
+      <div class="pbody mono" id="flags"></div>
+    </section>
+
+    <section class="panel" id="p-mem">
+      <div class="phead">Memory
+        <input id="memGoto" class="goto" placeholder="addr" size="6" value="0400">
+        <button id="memRefresh" class="mini">↻</button></div>
+      <div class="pbody mono" id="mem"></div>
+    </section>
+
+    <section class="panel" id="p-bp">
+      <div class="phead">Breakpoints
+        <input id="bpAddr" class="goto" placeholder="addr" size="6">
+        <select id="bpOp" class="mini"><option value="exec">exec</option>
+          <option value="load">load</option><option value="store">store</option></select>
+        <button id="bpAdd" class="mini">+ add</button></div>
+      <div class="pbody mono" id="bplist"></div>
+    </section>
+
+    <section class="panel" id="p-vis">
+      <div class="phead">
+        <span class="tabs">
+          <button class="tab active" data-tab="sprites">sprites</button>
+          <button class="tab" data-tab="charset">charset</button>
+          <button class="tab" data-tab="screen">screen</button>
+        </span>
+        <button id="visRefresh" class="mini">↻</button>
+      </div>
+      <div class="pbody" id="visbody">
+        <canvas id="vcanvas" width="384" height="272"></canvas>
+        <div class="dim mono" id="visinfo"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="p-log">
+      <div class="phead">Event log <button id="logClear" class="mini">clear</button></div>
+      <div class="pbody mono" id="log"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
