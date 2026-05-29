@@ -18,6 +18,7 @@
     { file: "part-1-foundations.md",   title: "Part I · 6502 Foundations" },
     { file: "part-2-interrupts.md",    title: "Part II · Interrupts & Timing" },
     { file: "part-3-vic.md",           title: "Part III · VIC-II Graphics" },
+    { file: "part-4-sid.md",           title: "Part IV · SID Sound" },
     { file: "cpu-6510.md",             title: "CPU · 6510 (overview)" },
     { file: "vic-ii.md",               title: "VIC-II" },
     { file: "sid.md",                  title: "SID" },

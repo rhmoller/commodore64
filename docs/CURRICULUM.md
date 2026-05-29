@@ -121,7 +121,7 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Part I | ✅ (all code assembles in KickAssembler) |
 | Part II | ✅ (assembled + run headless in VICE; 2 bugs caught & fixed via screenshot/assert) |
 | Part III | ✅ 3.1–3.10 (modes, scrolling, sprites, multiplexing, bad lines, border-opening/FLD/FLI/DYCP) — assembled + run in VICE, screenshots embedded (multiplexer rewritten after vision-check caught broken code) |
-| Part IV | ⬜ |
+| Part IV | 🟨 IV-A done (4.1–4.5: registers, waveforms, ADSR/hard-restart, PWM/ring/sync, filter — register-asserted in VICE); IV-B (players, GoatTracker, SFX, digi) pending |
 | Part V | ⬜ |
 | Part VI (game) | ⬜ |
 | Part VII (demo) | ⬜ |
