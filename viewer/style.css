@@ -239,36 +239,48 @@ a:hover { text-decoration: underline; }
   color: var(--c64-lgreen); font-size: .86rem; line-height: 1.5;
 }
 
-/* ---- 6502/KickAssembler syntax highlighting for ```asm blocks ---- */
-.markdown-body pre.lang-asm code.lang-asm {
+/* ---- syntax highlighting for ```asm (6502/KickAssembler) and ```basic ---- */
+.markdown-body pre.lang-asm code.lang-asm,
+.markdown-body pre.lang-basic code.lang-basic {
   color: #b8b0e6;                /* base text: muted lavender */
 }
 
-/* Keywords (instructions, directives, macros) */
-.markdown-body .asmkeyword {
+/* Keywords (instructions/directives/macros; BASIC commands & functions) */
+.markdown-body .asmkeyword,
+.markdown-body .baskeyword {
   color: var(--c64-yellow);      /* warm yellow — C64 yellow */
   font-weight: 600;
 }
 
-/* Numbers (hex $xx, binary %xx, decimal) */
-.markdown-body .asmnumber {
+/* Numbers */
+.markdown-body .asmnumber,
+.markdown-body .basnumber {
   color: var(--c64-lblue-2);     /* light blue accent */
 }
 
 /* String literals */
-.markdown-body .asmstring {
+.markdown-body .asmstring,
+.markdown-body .basstring {
   color: var(--c64-lgreen);      /* listing green */
 }
 
-/* Labels (identifier: at start of line) */
-.markdown-body .asmlabel {
+/* asm labels / BASIC line numbers (structural anchors) */
+.markdown-body .asmlabel,
+.markdown-body .baslinenum {
   color: var(--c64-cyan);        /* cyan — distinct from keywords/numbers */
 }
 
-/* Comments */
-.markdown-body .asmcomment {
+/* Comments (asm //, BASIC REM) */
+.markdown-body .asmcomment,
+.markdown-body .bascomment {
   color: var(--ink-dim);         /* dimmed text */
   font-style: italic;
+}
+
+/* petcat {clr}/{down}/... control codes inside BASIC strings */
+.markdown-body .basctrl {
+  color: var(--c64-red);         /* stand out against string green */
+  font-weight: 600;
 }
 
 /* tables */

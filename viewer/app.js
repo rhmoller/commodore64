@@ -231,6 +231,79 @@
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // ---- Commodore BASIC V2 syntax highlighting for ```basic blocks ----
+  var BASIC_KEYWORDS = [
+    'ABS','AND','ASC','ATN','CHR$','CLOSE','CLR','CMD','CONT','COS','DATA','DEF',
+    'DIM','END','EXP','FN','FOR','FRE','GET','GOSUB','GOTO','IF','INPUT','INT',
+    'LEFT$','LEN','LET','LIST','LOAD','LOG','MID$','NEW','NEXT','NOT','ON','OPEN',
+    'OR','PEEK','POKE','POS','PRINT','READ','REM','RESTORE','RETURN','RIGHT$','RND',
+    'RUN','SAVE','SGN','SIN','SPC','SQR','ST','STATUS','STEP','STOP','STR$','SYS',
+    'TAB','TAN','THEN','TI','TI$','TO','USR','VAL','VERIFY','WAIT'
+  ];
+  var BASIC_KW_SET = {};
+  BASIC_KEYWORDS.forEach(function (k) { BASIC_KW_SET[k] = true; });
+
+  function highlightBasic(src) {
+    return src.split('\n').map(highlightBasicLine).join('\n');
+  }
+
+  // colour {clr}/{down}/... petcat control-code escapes inside a string
+  function highlightCtrl(s) {
+    return escapeHtml(s).replace(/\{[^}]*\}/g, function (m) {
+      return '<span class="basctrl">' + m + '</span>';
+    });
+  }
+
+  function highlightBasicLine(line) {
+    var out = '', i = 0;
+    while (i < line.length && /\s/.test(line[i])) { out += line[i]; i++; }
+    // leading line number
+    var ln = '';
+    while (i < line.length && /[0-9]/.test(line[i])) { ln += line[i]; i++; }
+    if (ln) out += '<span class="baslinenum">' + ln + '</span>';
+
+    while (i < line.length) {
+      var c = line[i];
+      if (/\s/.test(c)) { while (i < line.length && /\s/.test(line[i])) { out += line[i]; i++; } continue; }
+      if (c === '"') {                              // string literal (+ {ctrl} codes)
+        var j = i + 1;
+        while (j < line.length && line[j] !== '"') j++;
+        var closed = j < line.length;
+        out += '<span class="basstring">"' + highlightCtrl(line.substring(i + 1, j)) +
+               (closed ? '"' : '') + '</span>';
+        i = closed ? j + 1 : j;
+        continue;
+      }
+      if (/[A-Za-z]/.test(c)) {                     // word: keyword (maybe + $) or variable
+        var k = i; var letters = '';
+        while (k < line.length && /[A-Za-z]/.test(line[k])) { letters += line[k]; k++; }
+        var up = letters.toUpperCase();
+        if (line[k] === '$' && BASIC_KW_SET[up + '$']) {     // CHR$, LEFT$, TI$...
+          out += '<span class="baskeyword">' + escapeHtml(letters + '$') + '</span>'; i = k + 1; continue;
+        }
+        if (BASIC_KW_SET[up]) {
+          if (up === 'REM') {                       // REM -> rest of line is a comment
+            out += '<span class="bascomment">' + escapeHtml(line.substring(i)) + '</span>';
+            i = line.length; continue;
+          }
+          out += '<span class="baskeyword">' + escapeHtml(letters) + '</span>'; i = k; continue;
+        }
+        var name = letters;                         // variable: letters [digits] [$]
+        while (k < line.length && /[A-Za-z0-9]/.test(line[k])) { name += line[k]; k++; }
+        if (line[k] === '$') { name += '$'; k++; }
+        out += escapeHtml(name); i = k; continue;
+      }
+      if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(line[i + 1] || ''))) {
+        var n = '';
+        while (i < line.length && /[0-9.]/.test(line[i])) { n += line[i]; i++; }
+        out += '<span class="basnumber">' + n + '</span>'; continue;
+      }
+      if (c === '?') { out += '<span class="baskeyword">?</span>'; i++; continue; }  // PRINT abbrev
+      out += escapeHtml(c); i++;
+    }
+    return out;
+  }
+
   // Register a marked extension that intercepts fenced code blocks with language
   // "asm". Handle BOTH renderer signatures: the newer token-object form
   // code({lang,text}) and the older positional form code(text, infostring).
@@ -245,9 +318,14 @@
           text = codeOrToken || '';
           lang = infostring || '';
         }
-        if (lang.split(/\s+/)[0].toLowerCase() === 'asm') {
+        var l0 = lang.split(/\s+/)[0].toLowerCase();
+        if (l0 === 'asm') {
           return '<pre class="lang-asm"><code class="lang-asm">' +
             highlightAsm(text) + '</code></pre>';
+        }
+        if (l0 === 'basic') {
+          return '<pre class="lang-basic"><code class="lang-basic">' +
+            highlightBasic(text) + '</code></pre>';
         }
         return false;   // fall back to marked's default for other languages
       }
