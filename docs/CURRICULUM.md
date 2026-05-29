@@ -125,7 +125,7 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Part V | ✅ 5.1–5.4 (the language, PEEK/POKE/SYS/USR, BASIC+ML hybrids, limits & tricks) — petcat-tokenised + run in VICE; screenshots embedded |
 | Part VI (game) | ✅ "Gem Catcher" — complete game (sprites, raster-IRQ loop, joystick, collision, score, SID SFX); assembles + runs in VICE, screenshot verified |
 | Part VII (demo) | ✅ "C64 DEV LIBRARY" intro — stable raster colourwash + logo + sine sprites + scroller + SID music, all in one raster IRQ; assembles + runs in VICE, screenshot verified |
-| Part VIII | ⬜ |
+| Part VIII | ✅ 8.1–8.5 (LUT math, RAM under ROMs, disk/fast loaders, PAL/NTSC, C64 Ultimate) — assembled + memory-asserted in VICE |
 
 *Build order: Appendices first (the reference backbone every lesson cites), then
 Parts 0→VIII, capstones last.*
