@@ -2,7 +2,7 @@
 
 The SID — three voices of synthesis on a chip, and the reason C64 music is its own art form. This first half covers the register file and the sound-shaping building blocks (waveforms, ADSR, PWM/ring/sync, the filter); music players, GoatTracker integration, a game SFX engine and digi playback follow in the second half. All code is verified by reading the SID registers back in VICE (audio is silent in the headless check).
 
-**In this part (A):** 4.1 · 4.2 · 4.3 · 4.4 · 4.5
+**In this part:** 4.1 · 4.2 · 4.3 · 4.4 · 4.5 · 4.6 · 4.7 · 4.8 · 4.9 4.1 · 4.2 · 4.3 · 4.4 · 4.5
 
 ## 4.1 The SID register map & your first sound
 
@@ -912,7 +912,851 @@ As the cutoff climbs, more of the sawtooth's harmonics pass through and the tone
 
 **Go deeper:** MOS 6581 SID datasheet (https://6502.org/documents/datasheets/mos/mos_6581_sid.pdf) and [Appendix D](appendix-d-sid-registers.md).
 
+## 4.6 Anatomy of a music player
+
+**Objectives**
+
+- Understand the universal two-call shape of a C64 music player: a one-shot **INIT** and a once-per-frame **PLAY**, and why PLAY is driven from the raster IRQ.
+- Learn the standard data model — order-list of **patterns**, patterns made of **rows** (note / instrument / effect), and **instruments** that supply waveform + ADSR over time.
+- Internalise two discipline rules: keep all SID writes inside the IRQ, keep game logic in the main loop, and use **shadow registers** for any state you must read back.
+- Build and run a minimal-but-real one-voice player that steps through a note table every N frames and loops a short melody.
+
+### Why every player has exactly two entry points
+
+Whether it is a 200-byte demo routine or a full GoatTracker replayer, a C64 music player exposes the same two routines, and almost always at fixed addresses:
+
+- **`init`** — called **once**, before the music starts. It clears SID, selects which subtune to play, and resets all the player's RAM counters (current order position, current row, tick counter, per-voice state). It writes nothing time-critical; it just establishes a known starting state.
+- **`play`** — called **exactly once per frame** (every video frame, 50 Hz on PAL / 60 Hz on NTSC). One call advances the song by one **tick**. On most ticks it does almost nothing; on a tick that lands on a new row it loads that row's note/instrument/effect and writes the relevant SID registers.
+
+The cadence of `play` *is* the tempo. Because it is called once per frame, "one tick = one frame" is the natural time unit, and a player measures note length in ticks (e.g. "6 ticks per row" = a row every 6 frames).
+
+### Why PLAY runs in the raster IRQ
+
+`play` must be called at a steady 50/60 Hz with no jitter, or the music wobbles. The reliable way to get a once-per-frame heartbeat is a **raster interrupt** (Part II 2.3): the VIC raises an IRQ when the beam reaches a chosen scanline, your handler runs `play`, acknowledges the IRQ, and returns. This decouples the music from whatever the main program is doing — the melody keeps perfect time even while the main loop is busy.
+
+The two hard rules that follow from this:
+
+1. **All SID writes belong in the IRQ (in `play`).** If the main loop also poked SID, the two would race and you would get torn writes — half of a frequency word from one, half from the other.
+2. **Game logic stays in the main loop.** The IRQ should be short and predictable. The main loop reads input, moves sprites, decides *what* should happen; `play` only emits sound for the current tick.
+
+### Shadow registers
+
+The SID voice and filter registers are **write-only** (Appendix D §intro): writing `$D404` does not let you read it back. So if your code needs to know "what waveform bits are currently set" — for example to set GATE without disturbing the waveform selection — you must keep a copy in RAM, called a **shadow register**. The player updates the shadow, then copies the shadow to SID. Real replayers shadow the whole voice block per voice; our minimal player shadows just the voice-1 control byte so it can re-gate cleanly.
+
+### The data model: patterns, order-list, instruments
+
+A tracker tune is built from three layers, from the bottom up:
+
+- **Instrument** — defines *timbre over time*: the waveform to use, the ADSR envelope, and any per-frame pulse-width or filter program. One instrument can be reused by many notes.
+- **Pattern** — a fixed-length table of **rows**. Each row, per voice, holds up to three things: a **note** (which pitch, or "no change" / "key-off"), an **instrument** number, and an **effect** (slide, vibrato, volume, tempo change...). The pattern is the actual sequence of musical events.
+- **Order-list (song)** — a list of pattern numbers giving the playback order, e.g. `[0,1,1,2,1,1,3]`, usually ending in a loop point. This lets you reuse a chorus pattern many times without duplicating its data.
+
+`play`'s job each tick is therefore: count ticks; when a row boundary is reached, look up the current order entry → pattern → row, read note/instrument/effect, apply the instrument's waveform+ADSR, write the note frequency, and gate the voice. Effects are then re-applied every tick (vibrato and slides need per-frame updates).
+
+### A minimal real player
+
+The program below is a complete, runnable player for **one voice**. To stay assertable it collapses the data model: the "order-list/pattern/rows" become a single flat `noteTable` of pitches, the "instrument" is a fixed waveform + ADSR, and "ticks per row" is a frame divider `STEP`. It is still structured exactly like a real player — a one-shot `init`, a once-per-frame `play` driven by the raster IRQ, and a shadow register for the control byte.
+
+Stable register values you can assert at any time after `init` (these never change while the tune plays):
+
+- **Master volume `$D418` = `$0F`** (volume 15, no filter routed).
+- **Attack/Decay `$D405` = `$09`** — attack `$0` (2 ms), decay `$9` (750 ms peak→sustain). This is the instrument's ADSR and is written once in `init`.
+- **Sustain/Release `$D406` = `$F4`** — sustain level `$F` (15/15, full), release `$4` (114 ms).
+- **Control register `$D404`**: waveform is **sawtooth (`$20`)** the entire time. GATE (bit 0) is the only changing bit — `$21` (sawtooth+gate) on a new-note frame, briefly `$20` (gate cleared) on the frame the note is re-triggered. So `$D404 & $20` is always set, and `$D404 & $80/$40/$10` (noise/pulse/triangle) are always clear.
+
+Registers that **do** change over time:
+
+- **Frequency `$D400`/`$D401`** — rewritten to the next table entry every `STEP` frames; cycles through the melody.
+- **`$D404` bit 0 (GATE)** toggles per note to re-trigger the envelope.
+
+```asm
+//============================================================
+// 4.6  Minimal one-voice music player (KickAssembler v5.x)
+//      init once; play once per frame from a raster IRQ.
+//      Sawtooth, fixed ADSR, melody loops every few seconds.
+//============================================================
+.const SID      = $d400
+.const FREQ_LO  = SID+0      // $D400
+.const FREQ_HI  = SID+1      // $D401
+.const CTRL     = SID+4      // $D404  waveform + gate
+.const AD       = SID+5      // $D405  attack/decay
+.const SR       = SID+6      // $D406  sustain/release
+.const VOLUME   = SID+$18    // $D418
+
+.const RASTERLINE = $80      // any visible line; stable per-frame tick
+.const STEP       = 12       // frames per note (≈0.24 s @ PAL)
+.const SAW        = $20      // sawtooth waveform bit
+.const GATE       = $01      // gate bit
+.const noteCount  = 8        // entries in the note table
+
+BasicUpstart2(main)          // owns $0801; SYS into main
+
+*=$0810
+main:
+        jsr init
+        cli                  // allow IRQs
+loop:   jmp loop             // game logic would live here
+
+//------------------------------------------------------------
+// init: called ONCE. Clear SID, set instrument, install IRQ.
+//------------------------------------------------------------
+init:
+        sei
+        // --- clear all 25 SID registers to a known state ---
+        lda #0
+        ldx #$18
+!clr:   sta SID,x
+        dex
+        bpl !clr-
+
+        // --- instrument: ADSR (written once, stays stable) ---
+        lda #$09             // attack $0 (2ms), decay $9
+        sta AD               // $D405 = $09
+        lda #$f4             // sustain $F (full), release $4
+        sta SR               // $D406 = $F4
+
+        // --- master volume (stable) ---
+        lda #$0f
+        sta VOLUME           // $D418 = $0F
+
+        // --- shadow the control byte: sawtooth, gate off ---
+        lda #SAW
+        sta ctrlShadow
+        sta CTRL             // $D404 = $20
+
+        // --- reset player state ---
+        lda #0
+        sta noteIndex
+        lda #1               // force a note on the very first play
+        sta frameCount
+
+        // --- raster IRQ setup (Part II 2.3 recipe) ---
+        lda #<irq
+        sta $0314
+        lda #>irq
+        sta $0315
+        lda #$7f             // disable CIA timer IRQs
+        sta $dc0d
+        lda $dc0d            // ack any pending CIA IRQ
+        lda #$01             // enable raster IRQ source
+        sta $d01a
+        lda #RASTERLINE
+        sta $d012
+        lda $d011            // clear bit 7 (raster line high bit = 0)
+        and #$7f
+        sta $d011
+        asl $d019            // ack any pending raster IRQ
+        rts
+
+//------------------------------------------------------------
+// irq: raster handler. Runs once per frame, calls play.
+//------------------------------------------------------------
+irq:
+        asl $d019            // acknowledge raster IRQ
+        jsr play
+        jmp $ea31            // chain to KERNAL IRQ handler
+
+//------------------------------------------------------------
+// play: ONE tick. Most frames: re-gate housekeeping only.
+//       Every STEP frames: load next note, re-trigger voice.
+//------------------------------------------------------------
+play:
+        dec frameCount
+        bne playDone         // not a new-note frame yet
+
+        // --- new-note frame: reload divider ---
+        lda #STEP
+        sta frameCount
+
+        // --- gate OFF first (re-trigger the envelope) ---
+        lda ctrlShadow
+        and #(255-GATE)      // clear gate bit -> $20
+        sta CTRL             // $D404 = $20 (saw, gate low)
+
+        // --- fetch this note's 16-bit frequency ---
+        ldx noteIndex
+        lda noteTableLo,x
+        sta FREQ_LO          // $D400 (changes per step)
+        lda noteTableHi,x
+        sta FREQ_HI          // $D401 (changes per step)
+
+        // --- gate ON: start attack/decay/sustain ---
+        lda ctrlShadow
+        ora #GATE            // set gate -> $21
+        sta CTRL             // $D404 = $21 (saw + gate)
+
+        // --- advance to next note, wrap at end of table ---
+        inx
+        cpx #noteCount
+        bne saveIdx
+        ldx #0
+saveIdx:
+        stx noteIndex
+playDone:
+        rts
+
+//------------------------------------------------------------
+// Player state (RAM shadows / counters)
+//------------------------------------------------------------
+ctrlShadow: .byte 0          // RAM copy of write-only $D404
+noteIndex:  .byte 0          // current position in noteTable
+frameCount: .byte 0          // frames left until next note
+
+//------------------------------------------------------------
+// "Song" data: a flat note table (the collapsed pattern).
+// Fn values from Appendix D §D.6 (1.0MHz reference, octave 4/5).
+//------------------------------------------------------------
+// Fn values as a KickAssembler list so we can split lo/hi bytes.
+//        C4     E4     G4     C5     E5     C5     G4     E4
+.var notesFn = List().add($1125,$159a,$19b1,$224b,$2b34,$224b,$19b1,$159a)
+noteTableLo:
+        .fill noteCount, <notesFn.get(i)
+noteTableHi:
+        .fill noteCount, >notesFn.get(i)
+```
+
+#### Walking through it
+
+- **`init` runs once.** It zeroes SID, programs the instrument (`$D405=$09`, `$D406=$F4`), sets volume (`$D418=$0F`), seeds the shadow control byte to sawtooth, and installs the raster IRQ exactly per the Part II 2.3 recipe (`$0314/$0315` vector, disable CIA via `$DC0D`, enable raster via `$D01A`, select line via `$D012`, ack via `$D019`).
+- **`play` runs once per frame** from `irq`. It is a textbook tick: decrement the frame divider; on most frames it returns immediately (cheap). Every `STEP` frames it does the "new row" work — clear gate, write the new frequency, set gate, advance the index with wraparound.
+- **Shadow register in action:** `play` never reads `$D404`; it reads `ctrlShadow`, masks the gate bit, and writes the result back to SID. That keeps the sawtooth selection intact across re-gates without ever reading a write-only register.
+- The main loop is empty here, but the design is the point: you could put sprite movement, input handling, and scrolling there and the music timing would not change, because the beat lives in the IRQ.
+
+### Scaling this up to a real player
+
+To grow this stand-in into a full replayer you add layers without changing the shape:
+
+- Replace `noteTable` with a **pattern** structure (rows of note+instrument+effect) and add an **order-list** that `play` walks to choose the current pattern.
+- Replace the fixed ADSR with an **instrument table** indexed by the row's instrument number; on a new note, copy that instrument's waveform/ADSR (and start its pulse/filter program).
+- Add an **effects step** that runs every tick (not just on row boundaries) for vibrato, slides, and arpeggio.
+- Add a **hard restart** (Appendix D §D.7): a couple of ticks before a new note, force a fast release (`$D405=$00`, `$D406=$Fx`, GATE=0) so the envelope drains to a known zero before re-gating — otherwise the ADSR delay bug gives inconsistent note volumes. A real GoatTracker export does this for you; the integration is simply `jsr music_init` once and `jsr music_play` from the IRQ, exactly where we call `init`/`play` above. (GoatTracker is not installed in this environment, so the example uses the assemblable stand-in instead of a real `.sid`/`.bin` export.)
+
+**Pitfalls**
+
+- **Calling `play` more or less than once per frame.** Two calls per frame doubles the tempo; a missed frame stutters. Drive it from a single, stable raster line and keep the handler short.
+- **Writing SID from the main loop *and* the IRQ.** They race and tear multi-byte writes (frequency, pulse). Funnel every SID write through `play`.
+- **Reading back a write-only register.** `$D400–$D414` and `$D418` cannot be read; mirror anything you need to re-read in a shadow byte.
+- **Volume left at zero.** `$D418`'s low nibble must be non-zero or there is no sound at all, regardless of correct ADSR and waveform.
+- **Selecting no waveform (or noise + another).** A control byte with all waveform bits clear is silent; combining NOISE with another waveform can lock the noise generator (Appendix D §D.2).
+- **Skipping the hard restart in a bigger player.** Re-gating without draining the envelope triggers the ADSR delay bug and uneven note attacks (Appendix D §D.7).
+- **Not acknowledging the raster IRQ (`asl $d019`)** — the handler re-fires immediately and the machine appears to hang.
+
+**Go deeper:** MOS 6581 SID datasheet (register map, envelope rates, frequency formula) — https://6502.org/documents/datasheets/mos/mos_6581_sid.pdf — and Codebase64 "SID — Sound & Music" (replayer structure, hard restart) — https://codebase64.c64.org/doku.php?id=base:sid_programming. Full register reference: [Appendix D](appendix-d-sid-registers.md).
+
+## 4.7 Composing with GoatTracker & integrating the export
+
+**Objectives**
+- Understand what GoatTracker 2 is and where it sits in a C64 music workflow.
+- Learn the standard *player export contract*: a base address with three conventional entry points (init at base+0, play at base+3, optional stop).
+- Integrate an exported player into a KickAssembler project with `.import binary`, `jsr music_init` at startup, and `jsr music_play` from a raster IRQ.
+- Build and run a complete program using a drop-in stand-in player that honours the same contract, with assertable SID register values.
+
+### What GoatTracker 2 is
+
+GoatTracker 2 is the de-facto cross-platform tracker for composing SID music. It runs on Linux, macOS and Windows, emulates **both** the 6581 and 8580 (so you can hear the chip-dependent filter and combined-waveform differences from [Appendix D](appendix-d-sid-registers.md) §D.7 before committing), and lets you build a song from *instruments*, *patterns*, *tables* (wave/pulse/filter program tables) and an *orderlist* per voice. It exports two things you care about:
+
+1. A standalone **`.sid` file** (a PSID/RSID container, for playing in SID players or contributing to the High Voltage SID Collection).
+2. A **relocatable player + song data** (binary, or assembly source) that you link into your own program. This is what a demo or game actually ships.
+
+> **Honesty note:** GoatTracker is **not installed in this environment**, so this lesson cannot ship a real exported tune. Everything below shows the exact integration code you would use, and then wires it to a minimal **inline stand-in player** that exposes the identical `music_init` / `music_play` contract so the example assembles and runs and can be verified by reading SID registers. The two clearly marked lines (the `.import` and the base address) are the only things you swap to use a real export.
+
+### The integration contract
+
+By long-standing convention (GoatTracker, and most C64 players follow it), a *relocated* player binary is a single blob loaded at a chosen **base address** with a fixed jump table at the very start:
+
+| Offset from base | Entry | When you call it | A register |
+|---|---|---|---|
+| base + 0 | **init** | once, at startup | subtune number (0 = first) |
+| base + 3 | **play** | once per frame, from your IRQ | — |
+| base + 6 | **stop** (sometimes present) | to silence the tune | — |
+
+Those `+0 / +3 / +6` offsets exist because the player begins with three `JMP` instructions (each 3 bytes). You call the *addresses*, not the internal routines, so the player can be relocated freely.
+
+GoatTracker's relocator (`gt2reloc`) asks you for the load/base address and emits the data already assembled to live there. You then either:
+
+- **Link the binary**: drop it at that fixed address with `.import binary`, and define `music_init = base` / `music_play = base + 3`, or
+- **Include the exported assembly source** and call its published labels.
+
+### Importing the binary in KickAssembler
+
+The canonical pattern places the player at a known base (here `$1000`) and imports the relocated binary there:
+
+```asm
+// ---- REAL GOATTRACKER EXPORT WOULD LOOK LIKE THIS ----
+.const music_base = $1000
+* = music_base "Music"
+        .import binary "music.bin"      // <-- relocated to $1000 by gt2reloc
+
+.const music_init = music_base + 0      // call once, subtune in A
+.const music_play = music_base + 3      // call once per frame
+.const music_stop = music_base + 6      // if your export provides it
+```
+
+That is the whole linkage: the `.import binary` line and the base-address constant are the *only* GoatTracker-specific pieces. The startup and IRQ code never change.
+
+> **.sid header offset detail.** If all you have is the `.sid` file (not a relocated binary), you cannot `.import` it directly into your code path — a PSID file begins with a header (the data offset is stored as a 16-bit big-endian word at byte offset **$06** of the file; classic PSIDv2 headers are **$7C** bytes, so the C64 load image starts there, and the next two bytes are the C64 load address). The header also carries the init and play addresses (big-endian words at offsets **$0A** and **$0C**). For embedding in your own program, always export the **relocatable player**, not the `.sid`; reserve `.sid` for SID players and HVSC submissions.
+
+### Complete runnable program (stand-in player)
+
+This program is the real integration skeleton. The `* = $1000 "Music"` segment is where the `.import binary "music.bin"` line would go for a real tune; instead it contains a tiny table-driven player (the idea from 4.6) that exposes `music_init` at base+0 and `music_play` at base+3. It plays a 4-note arpeggio (C4, E4, G4, C5) on voice 1 with a triangle waveform.
+
+```asm
+// 4.7 - GoatTracker integration pattern (stand-in player)
+BasicUpstart2(start)
+
+* = $0810 "Main"
+
+start:
+        sei
+        lda #$7f
+        sta $dc0d           // disable CIA-1 timer IRQs
+        lda $dc0d           // ack any pending CIA IRQ
+
+        lda #<irq
+        sta $0314
+        lda #>irq
+        sta $0315
+
+        lda #$01
+        sta $d01a           // enable raster IRQ source
+        lda #$00
+        sta $d012           // compare on raster line 0
+        lda $d011
+        and #$7f            // clear high bit of raster compare
+        sta $d011
+
+        lda #$00            // subtune 0
+        jsr music_init      // CONTRACT: init, subtune number in A
+
+        cli
+loop:   jmp loop
+
+irq:
+        lda #$01
+        sta $d019           // ack raster IRQ
+        jsr music_play      // CONTRACT: play once per frame
+        jmp $ea31           // chain to KERNAL IRQ handler
+
+// ============================================================
+//  STAND-IN PLAYER  -- replace this whole segment with:
+//      * = $1000 "Music"
+//      .import binary "music.bin"
+//  (a real GoatTracker relocated export at $1000)
+//
+//  Same contract: music_init = base+0, music_play = base+3
+// ============================================================
+* = $1000 "Music"
+music_init:                 // base+0  (a JMP table, like real players)
+        jmp init_impl
+music_play:                 // base+3
+        jmp play_impl
+
+init_impl:
+        lda #$0f
+        sta $d418           // master volume = 15, no filter mode
+        lda #$00
+        sta $d405           // V1 attack=0, decay=0
+        lda #$f9
+        sta $d406           // V1 sustain=15, release=9
+        lda #$00
+        sta tick
+        sta idx
+        rts
+
+play_impl:
+        dec tick
+        bpl done
+        lda #$0b            // ~12 frames between notes
+        sta tick
+
+        ldx idx
+        lda freqlo,x
+        sta $d400
+        lda freqhi,x
+        sta $d401
+
+        lda #$10            // triangle, GATE off (release previous)
+        sta $d404
+        lda #$11            // triangle + GATE on (start new note)
+        sta $d404
+
+        inx
+        cpx #$04
+        bne nowrap
+        ldx #$00
+nowrap: stx idx
+done:   rts
+
+tick:   .byte 0
+idx:    .byte 0
+// C4, E4, G4, C5 (1 MHz reference values, Appendix D §D.6)
+freqlo: .byte $25,$9a,$b1,$4b
+freqhi: .byte $11,$15,$19,$22
+```
+
+This assembles cleanly with KickAssembler v5.x and runs to an infinite loop driven by the raster IRQ.
+
+### What to assert (register read-back)
+
+Audio is silent under headless verification, so the program is checked by reading SID registers (recall from [Appendix D](appendix-d-sid-registers.md) that voice registers are write-only on real hardware, but an emulator exposes the last written value). After `music_init` runs, these are **stable** for the life of the program:
+
+- **$D418 = $0F** — master volume 15, no filter mode bits set. Must be non-zero for any sound.
+- **$D405 = $00** — voice 1 attack=0, decay=0.
+- **$D406 = $F9** — voice 1 sustain=15, release=9.
+
+These **change over time** (per the note tick, every ~12 frames):
+
+- **$D404** (voice 1 control): cycles between **$10** (triangle, gate off) and settles at **$11** (triangle + gate on, bit 0 set) after each note trigger. A stable mid-note sample reads **$11**.
+- **$D400 / $D401** (voice 1 frequency lo/hi): step through the arpeggio pairs `$1125, $159A, $19B1, $224B` — i.e. C4, E4, G4, C5.
+
+A safe assertion strategy: let several frames elapse, then check the stable trio ($D418/$D405/$D406) exactly, and check that $D401 holds one of `{$11,$15,$19,$22}` and $D404 has bit 0 (gate) set.
+
+### Workflow recap
+
+1. Compose in GoatTracker 2 (instruments, patterns, orderlist); audition on 6581 *and* 8580.
+2. Save the `.sng`; export a `.sid` for players/HVSC.
+3. Run the packer/relocator (`gt2reloc`) to produce a binary relocated to your chosen base.
+4. `.import binary` it at that base; define `music_init = base`, `music_play = base + 3`.
+5. `jsr music_init` once (subtune in A); `jsr music_play` once per frame in the raster IRQ.
+
+**Pitfalls**
+- **Wrong base address.** A relocated binary is *position-dependent*. If you `.import` it somewhere other than the address it was relocated to, all its internal pointers break and it crashes or plays garbage. The `.import` base and the relocator's base must match exactly.
+- **Calling play more than once per frame** (or from both the IRQ and main loop) doubles the tempo and corrupts effect timing. Call it exactly once per frame, from one place.
+- **Skipping `music_init`** (or passing a non-existent subtune in A) leaves the player's RAM state uninitialised — silence or noise. Always init before the first `play`, with A set to a valid subtune.
+- **Trying to `.import` a `.sid` file into your code path.** The PSID header (data offset at file byte $06; classic header $7C bytes) means the raw bytes are not a loadable C64 image at offset 0. Export the relocatable player for embedding; reserve `.sid` for SID players.
+- **Chip mismatch.** A tune voiced for the 6581 can sound wrong on an 8580 (and vice-versa) because filter cutoff, resonance and combined-waveform timbres differ ([Appendix D](appendix-d-sid-registers.md) §D.7). Compose for the target machine, or detect the model at runtime.
+- **Forgetting the IRQ housekeeping** ($DC0D mask, $D01A enable, $D019 ack) — the player's `play` then never fires or fires erratically.
+
+**Go deeper:** GoatTracker 2 (https://sourceforge.net/projects/goattracker2/) and the High Voltage SID Collection (https://www.hvsc.c64.org/); register details in [Appendix D](appendix-d-sid-registers.md).
+
+## 4.8 A game sound-effects engine
+
+**Objectives**
+- Build a tiny, table-driven SFX engine that plays on one dedicated SID voice (voice 3) while music keeps voices 1–2.
+- Represent each effect as a short per-frame script of SID writes, advanced one step per raster IRQ, and learn how an effect is triggered and how it ends.
+- Add a priority scheme so a new, lower-priority effect cannot cut off a higher-priority effect that is still playing.
+
+### Why a separate voice and a per-frame engine
+
+A game already burns one raster IRQ per frame to run the music player. Sound effects want the same heartbeat: most arcade SFX are just a parameter (usually pitch) changing a little every frame for a handful of frames. So the natural design is:
+
+- **Voice allocation.** Reserve **voice 3** ($D40E–$D414) for SFX and let the music driver own **voices 1 and 2**. The two never fight over the same registers, so they can run from the same IRQ without coordination. (If a tune genuinely needs all three voices you instead "duck" voice 3 — pause the music's use of it while an effect plays — but a dedicated voice is the simplest correct design and what we build here.)
+- **One update call per frame.** A routine `sfxUpdate` is called once from the raster IRQ. If an effect is active it reads the next step of that effect's script and writes the bytes to voice 3.
+- **Effects as data, not code.** Each effect is a table. A "laser" is a falling pitch over ~8 frames; an "explosion" is noise with a slow release; a "pickup" is a quick rising blip. New effects are new tables, not new code paths.
+
+### What lives in a script
+
+Keep the per-frame record tiny and fixed-width so indexing is a single add. In this lesson each frame entry is **3 bytes**:
+
+```
+[ control , freqLo , freqHi ]
+```
+
+- **control** goes to the voice-3 control register $D412. Per [Appendix D](appendix-d-sid-registers.md) §D.2 the bits are NOISE $80, PULSE $40, SAWTOOTH $20, TRIANGLE $10, TEST $08, RINGMOD $04, SYNC $02, GATE $01. We use **$21 = SAWTOOTH ($20) + GATE ($01)** for the laser. Sawtooth is a good default for sweeps because, unlike PULSE, it needs no pulse-width setup to be audible (a PULSE wave with pulse width $000 is silent DC).
+- **freqLo/freqHi** go to $D40E/$D40F. Per §D.5 `Fout = Fn * Fclk / 2^24`; we sweep the high byte downward so the pitch falls — the classic descending "laser/pew" gesture.
+
+A sentinel byte **$FF** marks the end of the script. When `sfxUpdate` reads it, it gates the voice off (writes control with GATE clear so the envelope enters RELEASE, §D.2 bit 0) and marks the engine idle.
+
+### Triggering and priority
+
+Triggering an effect is two writes plus a guard:
+
+1. Compare the **requested priority** against the priority of the effect currently playing.
+2. If the request is `>=` the active priority (or nothing is playing — idle priority is 0), accept it: store the script pointer, reset the frame counter to 0, and flag the first frame so the ADSR is programmed before the gate goes high.
+3. Otherwise reject it and leave the running effect alone.
+
+This is the whole "a quiet pickup must not interrupt a still-playing explosion" rule. Priorities here: `PRI_NONE=0`, `PRI_LASER=1`, `PRI_EXPL=2`. Because the comparison is `>=`, an equal-priority retrigger *does* restart (which is usually what you want — rapid repeated lasers should restart, not stack).
+
+### Stable vs changing registers (what to assert)
+
+Because SID voice registers are **write-only** (Appendix D intro), headless verification reads the engine's intent through the registers it leaves set. For this program, after the engine has fired the laser at least once:
+
+- **$D418 (master volume/mode) = $0F** — set once at startup and never touched again (stable).
+- **$D413 (voice 3 Attack/Decay) = $0A** — attack nibble 0 (≈2 ms, §D.4), decay nibble $A (≈1.5 s). Programmed on the effect's first frame, then stable.
+- **$D414 (voice 3 Sustain/Release) = $00** — sustain level 0, release rate 0 (percussive: no hold, fast tail). Stable once set.
+- **$D412 (voice 3 control)** is **$21** (SAWTOOTH + GATE) for every active sweep frame, then **$10** (TRIANGLE, GATE off) when the script ends and the voice goes idle. These are the *intended* control writes, but note that $D412 is **not** a stable register to assert headless: the laser plays only ~8 frames out of every 128-frame cycle, so a register read lands on $21, $10, or an idle-phase value depending on timing. Assert the genuinely-stable registers ($D418/$D413/$D414); treat $D412 as a moving value like the frequency.
+- **$D40E / $D40F (voice 3 frequency)** **change every frame** as the sweep descends — these are the deliberately moving values and must not be asserted as constant.
+
+### The complete program
+
+This is a self-contained, assemblable KickAssembler v5.x program. It needs no input: a frame counter auto-fires the laser on voice 3 every 128 frames straight from the raster IRQ. Music would normally run in the same IRQ on voices 1–2; here voices 1–2 are simply left idle so the SFX engine is easy to observe.
+
+```asm
+        .const SID      = $D400
+        .const V3_FREQ  = SID + $0E     // $D40E voice-3 freq lo
+        .const V3_FREQH = SID + $0F     // $D40F voice-3 freq hi
+        .const V3_CTRL  = SID + $12     // $D412 voice-3 control
+        .const V3_AD    = SID + $13     // $D413 voice-3 attack/decay
+        .const V3_SR    = SID + $14     // $D414 voice-3 sustain/release
+        .const VOLUME   = SID + $18     // $D418 master volume / mode
+
+        .const RASTER   = $D012
+        .const VICCTRL  = $D011
+        .const VICIRQ   = $D019
+        .const VICMASK  = $D01A
+        .const CIAICR   = $DC0D
+        .const IRQVEC   = $0314
+
+        .const PRI_NONE  = 0
+        .const PRI_LASER = 1
+        .const PRI_EXPL  = 2
+
+        .const FRAME_END = $ff          // sentinel ending a script
+
+        BasicUpstart2(main)
+
+        *=$0810
+main:
+        sei
+        lda #$0f
+        sta VOLUME                  // $D418 = $0F : master volume max (stable)
+
+        lda #PRI_NONE
+        sta sfxActivePri            // engine idle
+        lda #$00
+        sta tick
+        sta tick+1
+
+        // ---- raster IRQ wiring (Part II 2.3 recipe) ----
+        lda #<irq
+        sta IRQVEC
+        lda #>irq
+        sta IRQVEC+1
+        lda #$7f
+        sta CIAICR                  // disable all CIA timer IRQs
+        lda CIAICR                  // ack pending CIA IRQ
+        lda VICCTRL
+        and #$7f
+        sta VICCTRL                 // raster compare bit 8 = 0
+        lda #$80
+        sta RASTER                  // fire at raster line $80
+        lda #$01
+        sta VICMASK                 // enable raster IRQ source
+        lda VICIRQ
+        sta VICIRQ                  // ack any pending VIC IRQ
+        cli
+loop:   jmp loop                    // foreground does nothing
+
+//------------------------------------------------------------
+irq:
+        lda VICIRQ
+        sta VICIRQ                  // ack raster IRQ ($D019)
+        jsr autoTrigger
+        jsr sfxUpdate
+        jmp $ea81                   // restore regs + RTI (no kernal raster work)
+
+//------------------------------------------------------------
+// autoTrigger: every 128 frames, request the laser effect.
+autoTrigger:
+        inc tick
+        bne acDone
+        inc tick+1
+acDone:
+        lda tick
+        and #$7f
+        bne acRts                   // not a multiple of 128 -> skip
+        lda #PRI_LASER
+        ldx #<laserScript
+        ldy #>laserScript
+        jsr sfxRequest
+acRts:
+        rts
+
+//------------------------------------------------------------
+// sfxRequest: A = priority, X/Y = script ptr lo/hi.
+// Accept only if requested priority >= currently active priority.
+sfxRequest:
+        cmp sfxActivePri
+        bcc srReject                // new < active -> keep current effect
+        sta sfxActivePri
+        stx scriptPtr
+        sty scriptPtr+1
+        lda #$00
+        sta sfxFrame                // restart the script
+        lda #$01
+        sta sfxFresh                // program ADSR on first frame
+srReject:
+        rts
+
+//------------------------------------------------------------
+// sfxUpdate: advance the active effect by one frame.
+sfxUpdate:
+        lda sfxActivePri
+        cmp #PRI_NONE
+        beq suRts                   // nothing playing
+
+        ldy sfxFrame                // byte offset into script (3 bytes/frame)
+        lda (scriptPtr),y
+        cmp #FRAME_END
+        beq suEnd
+
+        sta tmpCtrl                 // stash control byte for after ADSR
+        iny
+        lda (scriptPtr),y
+        sta V3_FREQ                 // $D40E (changes per frame)
+        iny
+        lda (scriptPtr),y
+        sta V3_FREQH                // $D40F (changes per frame)
+        iny
+        sty sfxFrame                // advance to next 3-byte entry
+
+        lda sfxFresh
+        beq suNoFresh
+        lda #$00
+        sta sfxFresh
+        lda #$0a
+        sta V3_AD                   // $D413 = $0A : attack 0, decay $A (stable)
+        lda #$00
+        sta V3_SR                   // $D414 = $00 : sustain 0, release 0 (stable)
+suNoFresh:
+        lda tmpCtrl
+        sta V3_CTRL                 // $D412 = $21 while sweeping (SAWTOOTH+GATE)
+        rts
+
+suEnd:
+        lda #$10
+        sta V3_CTRL                 // $D412 = $10 : TRIANGLE, GATE off -> RELEASE
+        lda #PRI_NONE
+        sta sfxActivePri            // mark engine idle
+suRts:
+        rts
+
+//------------------------------------------------------------
+// laser: sawtooth, gate on, pitch sweeps down via the freq high byte.
+laserScript:
+        .byte $21, $00, $30
+        .byte $21, $00, $2c
+        .byte $21, $00, $28
+        .byte $21, $00, $24
+        .byte $21, $00, $20
+        .byte $21, $00, $1c
+        .byte $21, $00, $18
+        .byte $21, $00, $14
+        .byte FRAME_END
+
+sfxActivePri: .byte 0
+sfxFrame:     .byte 0
+sfxFresh:     .byte 0
+scriptPtr:    .byte 0,0
+tmpCtrl:      .byte 0
+tick:         .byte 0,0
+```
+
+### Adding more effects (explosion, pickup)
+
+The engine is generic; new effects are just new tables and a one-line `sfxRequest` call at a higher or lower priority. Sketches:
+
+```asm
+// explosion: NOISE ($80) + GATE ($01) = $81, slow tail.
+// Give it PRI_EXPL so it survives an overlapping laser request.
+// (Use a slower release in the first-frame ADSR if you want a long tail;
+//  here we keep the same engine, so adjust V3_SR for that effect class.)
+explScript:
+        .byte $81, $00, $20
+        .byte $81, $00, $20
+        .byte $81, $00, $20
+        .byte $81, $00, $20
+        .byte FRAME_END
+
+// pickup: rising sawtooth blip, low priority (PRI_LASER or lower).
+pickupScript:
+        .byte $21, $00, $14
+        .byte $21, $00, $1c
+        .byte $21, $00, $26
+        .byte $21, $00, $34
+        .byte FRAME_END
+```
+
+To fire the explosion instead of the laser, request `#PRI_EXPL` with `explScript`; once it is playing, an incoming `#PRI_LASER` request is rejected until the explosion's $FF frame marks the engine idle.
+
+> Note on a real tracker: a music driver such as a GoatTracker export would be `jsr`'d once per frame from this same IRQ, before `sfxUpdate`, and would only touch voices 1–2. GoatTracker is not installed in this environment, so the program above uses no music driver and leaves voices 1–2 silent; the integration point is simply "call your player's per-frame routine here, then call `sfxUpdate`."
+
+**Pitfalls**
+- **Voice collision.** If your music driver ever writes voice 3, the SFX engine and the music will stomp on each other's $D40E–$D414 writes. Keep the split strict, or implement explicit ducking.
+- **Write-only registers.** You cannot read voice 3's frequency/control back from SID (Appendix D intro). The engine keeps its own RAM state (`sfxActivePri`, `sfxFrame`, `scriptPtr`); never assume you can re-read SID to recover where an effect was.
+- **Silent waveforms.** PULSE ($40) with pulse width $000 produces inaudible DC, and selecting *no* waveform bit silences the voice (§D.2). Use SAWTOOTH/TRIANGLE/NOISE for parameter-free effects, or set $D410/$D411 first if you want PULSE.
+- **NOISE lock-up.** Combining NOISE with another waveform, or leaving a noise voice mis-gated, can "lock" the noise generator silent until a TEST-bit pulse or RESET (§D.2, §D.7). For explosion effects use NOISE alone ($80, not $90/$A0).
+- **Re-gating quirk / hard restart.** Rapid retriggers can hit the ADSR delay bug (§D.7): the envelope may not reset cleanly. For consistent attacks on a busy SFX channel, do a one-frame hard restart (write a fast release such as $00/$F0 with GATE=0) on the frame before re-gating.
+- **Priority comparison direction.** `bcc` after `cmp sfxActivePri` rejects requests *below* the active priority. Get the branch sense wrong and a footstep will cut off your boss explosion.
+- **Frame stride must match entry size.** Entries are 3 bytes; `sfxUpdate` advances `Y` by 3. If you grow an entry (e.g. add a per-frame ADSR byte), update the stride or the engine will read garbage.
+
+**Go deeper:** MOS 6581 SID datasheet (control-register bits, ADSR rates, frequency formula): https://6502.org/documents/datasheets/mos/mos_6581_sid.pdf — and [Appendix D](appendix-d-sid-registers.md).
+
+## 4.9 Digi (sample) playback — an overview
+
+**Objectives**
+- Understand why the 4-bit master-volume nibble of `$D418` can be (ab)used to play digitized PCM samples ("volume-register digi").
+- Build a complete, runnable program that streams a sample table to `$D418`'s low nibble at a steady multi-kHz rate, timed by CIA Timer A.
+- Know the cost (CPU-bound, ties up the machine), the 8580 caveat, and that better digi methods exist.
+
+### The idea: volume is in the signal path
+
+Look at `$D418` in [Appendix D §D.3](appendix-d-sid-registers.md): bits 3–0 are the **master volume** `VOL3–VOL0`, and "Volume must be non-zero for any sound at all." That volume nibble sits in the *output path* of the SID's analog mixer — it multiplies whatever the voices produce before it reaches the audio pin.
+
+On the 6581 there is a side effect that the designers did not intend: **every write to the volume nibble produces a small DC step (an audible click) at the output**, independent of any oscillator. So if you silence the three voices and then write a stream of 4-bit values to `$D418` *fast enough*, the sequence of clicks fuses into an audible waveform. You are effectively running a crude 4-bit DAC: the digital sample value goes straight to `$D418` bits 0–3, and the analog DC offset of each write reconstructs the waveform.
+
+This is the **classic volume-register digi**. It needs no oscillator at all — the voices can be left silent. The "sound" comes entirely from the rate and amplitude of the volume writes.
+
+### The cost: you must feed it constantly
+
+PCM is unforgiving about timing. To reproduce a waveform you must write a new 4-bit sample at a **fixed, high rate** — a few kHz at minimum for recognizable speech, 8–16 kHz for decent quality. At, say, 8 kHz on a ~1 MHz machine you get only ~125 cycles between samples, and the inner loop (fetch sample, mask to 4 bits, store to `$D418`, advance pointer, test for end) eats most of them.
+
+Consequences:
+- **The CPU is pinned.** A tight volume-digi loop leaves almost no time for game logic, so games trigger digis sparingly (a sampled drum hit, a short voice clip) and usually stop the music/screen DMA during playback.
+- **Jitter is audible.** The sample period must be rock-steady, which is why digi loops are driven by a hardware timer (CIA Timer A, or a fixed raster cadence) rather than by counting instructions in a path that branches.
+- **Badlines steal cycles.** The VIC-II's badline DMA can stall the CPU for ~40+ cycles on certain rows. Serious digi routines blank the screen (`$D011` bit 4 = 0) during playback so the timing stays uniform.
+
+### The 8580 caveat
+
+[Appendix D §D.7](appendix-d-sid-registers.md) spells it out: the later **8580** redesigned the mixer and largely removed the DC offset, so plain `$D418` writes are *nearly inaudible* on an 8580. To make volume-register digis play on an 8580 you need a trick that re-introduces a path for the offset — the common one is to keep one voice producing a steady DC level (for example select a waveform and set the **TEST** bit, `$08`, in that voice's control register, or set the pulse waveform with a fixed pulse width so the voice output is a constant the volume nibble can scale). Code written for the 6581 that skips this trick will sound silent on an 8580.
+
+Because of all this, better techniques exist that don't abuse the volume register: **pulse-width digis** (modulate a voice's 12-bit `PW` per sample) and **combined-waveform digis**, which are louder and work on both chips. They are beyond this overview; the volume-register method is taught first because it is the simplest to understand and the historically dominant one.
+
+### A complete CIA-timed digi player
+
+The program below silences all three voices, sets master volume so the output path is live, and uses **CIA #1 Timer A** to fire an IRQ at a fixed sample rate. Each interrupt writes the next 4-bit sample to `$D418`'s low nibble and advances the pointer, looping the sample table forever.
+
+We let `BasicUpstart2` own `$0801` and start code at `*=$0810`, per the course convention.
+
+```asm
+//============================================================
+// 4.9  Volume-register digi — CIA Timer A driven 4-bit PCM
+//      All voices silent; samples streamed to $D418 low nibble.
+//============================================================
+            BasicUpstart2(main)
+            *=$0810
+
+// --- CIA #1 registers ---
+.const CIA1_TA_LO = $DC04        // Timer A low byte
+.const CIA1_TA_HI = $DC05        // Timer A high byte
+.const CIA1_ICR   = $DC0D        // interrupt control/status
+.const CIA1_CRA   = $DC0E        // control register A
+
+// --- Sample period (PAL phi2 ~= 985248 Hz) ---
+// period = phi2 / sampleRate.  ~7813 cycles -> ~126 Hz here is
+// deliberately slow so it is easy to read; a real digi uses a
+// far smaller period (e.g. 123 -> ~8 kHz). We keep the table
+// looping so $D418's low nibble is provably changing.
+.const PERIOD     = 7813         // tweak for a faster rate
+.const SAMPLE_LEN = 32           // length of the looping sample table
+
+main:
+            sei
+
+            // --- silence the SID voices, set master volume live ---
+            ldx #$18             // $D400..$D417 = 0
+            lda #$00
+!clr:       sta $D400,x
+            dex
+            bpl !clr-
+            lda #$0F             // $D418 = volume 15, no filter mode
+            sta $D418            // (low nibble will be overwritten by digi)
+
+            // --- 8580 helper: give voice 3 a DC level via TEST bit ---
+            // Harmless on a 6581; needed for 8580 audibility.
+            lda #$08             // TEST bit set, no waveform/gate
+            sta $D412            // voice 3 control register
+
+            // --- point the digi engine at the sample table ---
+            lda #<sampleData
+            sta sampPtr+0
+            lda #>sampleData
+            sta sampPtr+1
+            lda #$00
+            sta sampIdx
+
+            // --- install IRQ vector ---
+            lda #<digiIrq
+            sta $0314
+            lda #>digiIrq
+            sta $0315
+
+            // --- silence CIA's default timer IRQ, then reprogram ---
+            lda #$7F
+            sta CIA1_ICR         // disable all CIA1 IRQ sources
+            lda CIA1_ICR         // ack/clear any pending
+
+            // load Timer A with the sample period
+            lda #<PERIOD
+            sta CIA1_TA_LO
+            lda #>PERIOD
+            sta CIA1_TA_HI
+
+            // start Timer A in continuous mode (reload on underflow)
+            lda #%00010001       // bit0=start, bit3=0 continuous
+            sta CIA1_CRA
+
+            lda #$81             // enable Timer A interrupt
+            sta CIA1_ICR
+
+            cli
+loop:       jmp loop             // everything happens in the IRQ
+
+//------------------------------------------------------------
+// CIA Timer A IRQ: write one 4-bit sample to $D418 low nibble
+//------------------------------------------------------------
+digiIrq:
+            // (registers already saved by the KERNAL on the
+            //  hardware vector path; $0314 entry preserves A/X/Y
+            //  via the KERNAL's stub before reaching us)
+            lda CIA1_ICR         // ACK CIA: reading ICR clears it
+
+            ldy sampIdx
+sampPtr:    lda sampleData,y     // self-modified base -> read sample
+            and #$0F             // keep only the 4-bit sample value
+            ora #$00             // (room to OR in filter-mode bits)
+            sta $D418            // <-- the digi write
+
+            inc sampIdx
+            lda sampIdx
+            cmp #SAMPLE_LEN
+            bne !done+
+            lda #$00
+            sta sampIdx          // loop the sample forever
+!done:
+            jmp $EA31            // KERNAL IRQ exit (restore + RTI)
+
+//------------------------------------------------------------
+// State
+//------------------------------------------------------------
+sampIdx:    .byte 0
+
+//------------------------------------------------------------
+// Sample data: a triangle ramp 0..15..0 in the low nibble.
+// In a real project this is where a tracker/sample export
+// (e.g. a GoatTracker or .raw export) would be included with
+// .import binary; the inline table below is an assemblable
+// stand-in so the example verifies without external tools.
+//------------------------------------------------------------
+sampleData:
+            .fill 16, i          // 0,1,2,...,15
+            .fill 16, 15 - i     // 15,14,...,0
+```
+
+> **GoatTracker note:** GoatTracker is not part of this environment, so this lesson does not run it. In a real pipeline you would record/convert a sample to 4-bit unsigned PCM and pull it in with KickAssembler's `.import binary "voice.raw"`, then point `sampPtr`/`SAMPLE_LEN` at it. The inline `.fill` table above is a self-contained stand-in so the program assembles and verifies on its own.
+
+### What the registers do (for the headless check)
+
+Audio is **silent in headless verification**, so we assert on register values read back from the SID:
+
+- **`$D418` — master volume / digi output.** After setup it is `$0F`, but it is the register the program *deliberately overwrites every IRQ*. Its **low nibble cycles 0→15→0** as the triangle table is streamed; the high nibble (filter-mode bits) stays 0. So `$D418` is the one register that **changes over time** — that is the digi in action.
+- **Voices 1 and 2 silent.** `$D400`–`$D40D` were cleared to `$00` and never touched again — frequency, pulse width, control (waveform+gate), and ADSR (`$D405/$D406` etc.) all read back as `0`. Gate bit (bit 0 of each control register) is 0, so no envelope runs.
+- **Voice 3 control `$D412` = `$08`** — only the **TEST** bit set (no waveform, gate = 0). This is the 8580 DC-offset helper; it is a **stable** value and never changes.
+- **Filter registers `$D415`–`$D417` = `0`** — no filter routing, no resonance.
+- **CIA Timer A** (`$DC04/$DC05`) is loaded with `PERIOD` and runs continuously; `$DC0E` (CRA) low bits show the timer started; `$DC0D` was set to `$81` to enable the Timer A interrupt.
+
+So: stable assertions are voices 1/2 zeroed, `$D412 = $08`, filter regs zeroed; the time-varying assertion is the **low nibble of `$D418`** stepping through the triangle table while the high nibble stays 0.
+
+**Pitfalls**
+- **Forgetting volume is in the path on 8580.** On a 6581 the bare `$D418` writes click audibly; on an 8580 you must hold a DC level on a voice (TEST bit, or a fixed pulse) or the digi is inaudible. The program includes the `$D412 = $08` helper for this reason.
+- **Inconsistent timing.** Driving the loop by instruction counting through branches introduces jitter and pitch wobble. Use a hardware timer (CIA Timer A here) or a fixed raster cadence, and blank the screen (`$D011` bit 4 = 0) to remove badline jitter during playback.
+- **Not masking the sample.** Sample bytes can carry junk in the high nibble; always `AND #$0F` before storing, or you will accidentally flip the filter-mode bits (`$10/$20/$40/$80`) and change the output routing.
+- **Not acknowledging the CIA IRQ.** You must read `$DC0D` in the handler; if you don't, the interrupt never clears and the machine wedges. (Note: this digi loop uses the **CIA** timer, not the raster `$D019` ack from the Part II 2.3 raster recipe — acknowledge the source you actually enabled.)
+- **CPU starvation.** A real-rate digi (multi-kHz) leaves almost no cycles for anything else; expect to pause music and game logic for the duration.
+- **Re-enabling the default CIA timer.** The KERNAL's normal `$DC0D` jiffy IRQ is replaced here; if you restore it later, reprogram Timer A and the `$0314/$0315` vector back.
+
+**Go deeper:** MOS 6581 SID datasheet (https://6502.org/documents/datasheets/mos/mos_6581_sid.pdf) and Codebase64's SID programming index (https://codebase64.c64.org/doku.php?id=base:sid_programming) for digi techniques; register details in [Appendix D](appendix-d-sid-registers.md) (§D.3 for `$D418`, §D.7 for the 6581-vs-8580 digi caveat and the TEST bit).
 
 ---
 
-*Part IV-B (players, GoatTracker, game SFX, digi) is in progress.*
+*Next: Part V — BASIC V2 (coming next)*
