@@ -20,6 +20,7 @@
     { file: "part-3-vic.md",           title: "Part III · VIC-II Graphics" },
     { file: "part-4-sid.md",           title: "Part IV · SID Sound" },
     { file: "part-5-basic.md",         title: "Part V · BASIC V2" },
+    { file: "part-6-game.md",          title: "Part VI · Capstone: Game" },
     { file: "cpu-6510.md",             title: "CPU · 6510 (overview)" },
     { file: "vic-ii.md",               title: "VIC-II" },
     { file: "sid.md",                  title: "SID" },
@@ -230,19 +231,25 @@
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // Register a marked extension that intercepts fenced code blocks with language "asm"
+  // Register a marked extension that intercepts fenced code blocks with language
+  // "asm". Handle BOTH renderer signatures: the newer token-object form
+  // code({lang,text}) and the older positional form code(text, infostring).
   marked.use({
     renderer: {
-      code: function (token) {
-        var lang = token.lang || '';
-        if (lang.toLowerCase() === 'asm') {
-          var highlighted = highlightAsm(token.text);
-          var langClass = 'lang-asm';
-          return '<pre class="' + langClass + '"><code class="' + langClass + '">' +
-            highlighted + '</code></pre>';
+      code: function (codeOrToken, infostring) {
+        var lang, text;
+        if (codeOrToken && typeof codeOrToken === 'object') {
+          lang = codeOrToken.lang || '';
+          text = codeOrToken.text || '';
+        } else {
+          text = codeOrToken || '';
+          lang = infostring || '';
         }
-        // Fall through — default marked behaviour for all other languages
-        return false;
+        if (lang.split(/\s+/)[0].toLowerCase() === 'asm') {
+          return '<pre class="lang-asm"><code class="lang-asm">' +
+            highlightAsm(text) + '</code></pre>';
+        }
+        return false;   // fall back to marked's default for other languages
       }
     }
   });

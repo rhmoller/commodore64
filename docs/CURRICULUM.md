@@ -123,7 +123,7 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Part III | ✅ 3.1–3.10 (modes, scrolling, sprites, multiplexing, bad lines, border-opening/FLD/FLI/DYCP) — assembled + run in VICE, screenshots embedded (multiplexer rewritten after vision-check caught broken code) |
 | Part IV | ✅ 4.1–4.9 (registers, waveforms, ADSR/hard-restart, PWM/ring/sync, filter, player anatomy, GoatTracker integration, game SFX engine, digi) — assembled + register-asserted in VICE |
 | Part V | ✅ 5.1–5.4 (the language, PEEK/POKE/SYS/USR, BASIC+ML hybrids, limits & tricks) — petcat-tokenised + run in VICE; screenshots embedded |
-| Part VI (game) | ⬜ |
+| Part VI (game) | ✅ "Gem Catcher" — complete game (sprites, raster-IRQ loop, joystick, collision, score, SID SFX); assembles + runs in VICE, screenshot verified |
 | Part VII (demo) | ⬜ |
 | Part VIII | ⬜ |
 
