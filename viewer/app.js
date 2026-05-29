@@ -9,37 +9,32 @@
 (function () {
   "use strict";
 
-  // Reading order + display titles. `file` is relative to DOCS_BASE.
+  // Reading order, section, and display titles. `file` is relative to DOCS_BASE.
   var DOCS = [
-    { file: "README.md",               title: "Home" },
-    { file: "CURRICULUM.md",           title: "Curriculum" },
-    { file: "00-getting-started.md",   title: "Getting Started" },
-    { file: "part-0-orientation.md",   title: "Part 0 · Orientation" },
-    { file: "part-1-foundations.md",   title: "Part I · 6502 Foundations" },
-    { file: "part-2-interrupts.md",    title: "Part II · Interrupts & Timing" },
-    { file: "part-3-vic.md",           title: "Part III · VIC-II Graphics" },
-    { file: "part-4-sid.md",           title: "Part IV · SID Sound" },
-    { file: "part-5-basic.md",         title: "Part V · BASIC V2" },
-    { file: "part-6-game.md",          title: "Part VI · Capstone: Game" },
-    { file: "part-7-demo.md",          title: "Part VII · Capstone: Demo" },
-    { file: "part-8-advanced.md",      title: "Part VIII · Advanced" },
-    { file: "cpu-6510.md",             title: "CPU · 6510 (overview)" },
-    { file: "vic-ii.md",               title: "VIC-II" },
-    { file: "sid.md",                  title: "SID" },
-    { file: "basic-v2.md",             title: "BASIC V2" },
-    { file: "demoscene-effects.md",    title: "Demoscene Effects" },
-    { file: "game-dev-patterns.md",    title: "Game Dev Patterns" },
-    { file: "toolchain.md",            title: "Toolchain" },
-    { file: "c64-ultimate.md",         title: "C64 Ultimate" },
-    { file: "appendix-a-opcodes.md",       title: "App A · Opcodes" },
-    { file: "appendix-b-memory-map.md",    title: "App B · Memory Map" },
-    { file: "appendix-c-vic-registers.md", title: "App C · VIC-II Regs" },
-    { file: "appendix-d-sid-registers.md", title: "App D · SID Regs" },
-    { file: "appendix-e-cia-registers.md", title: "App E · CIA Regs" },
-    { file: "appendix-f-kernal-basic.md",  title: "App F · KERNAL/BASIC" },
-    { file: "appendix-g-petscii.md",       title: "App G · PETSCII" },
-    { file: "appendix-h-timing.md",        title: "App H · Timing" },
-    { file: "appendix-i-glossary.md",      title: "App I · Glossary" }
+    { section: "Start",     file: "README.md",                     title: "Home" },
+    { section: "Start",     file: "CURRICULUM.md",                 title: "Curriculum" },
+    { section: "Start",     file: "00-getting-started.md",         title: "Getting Started" },
+    { section: "Start",     file: "toolchain.md",                  title: "Toolchain" },
+    { section: "Course",    file: "part-0-orientation.md",         title: "Part 0 · Orientation" },
+    { section: "Course",    file: "part-1-foundations.md",         title: "Part I · 6502 Foundations" },
+    { section: "Course",    file: "part-2-interrupts.md",          title: "Part II · Interrupts & Timing" },
+    { section: "Course",    file: "part-3-vic.md",                 title: "Part III · VIC-II Graphics" },
+    { section: "Course",    file: "part-4-sid.md",                 title: "Part IV · SID Sound" },
+    { section: "Course",    file: "part-5-basic.md",               title: "Part V · BASIC V2" },
+    { section: "Course",    file: "part-6-game.md",                title: "Part VI · Capstone: Game" },
+    { section: "Course",    file: "part-7-demo.md",                title: "Part VII · Capstone: Demo" },
+    { section: "Course",    file: "part-8-advanced.md",            title: "Part VIII · Advanced" },
+    { section: "Reference", file: "appendix-a-opcodes.md",         title: "App A · Opcodes" },
+    { section: "Reference", file: "appendix-b-memory-map.md",      title: "App B · Memory Map" },
+    { section: "Reference", file: "appendix-c-vic-registers.md",   title: "App C · VIC-II Regs" },
+    { section: "Reference", file: "appendix-d-sid-registers.md",   title: "App D · SID Regs" },
+    { section: "Reference", file: "appendix-e-cia-registers.md",   title: "App E · CIA Regs" },
+    { section: "Reference", file: "appendix-f-kernal-basic.md",    title: "App F · KERNAL/BASIC" },
+    { section: "Reference", file: "appendix-g-petscii.md",         title: "App G · PETSCII" },
+    { section: "Reference", file: "appendix-h-timing.md",          title: "App H · Timing" },
+    { section: "Reference", file: "appendix-i-glossary.md",        title: "App I · Glossary" },
+    { section: "Reference", file: "c64-ultimate.md",               title: "C64 Ultimate" },
+    { section: "Reference", file: "resources.md",                  title: "Resources & Links" }
   ];
   var DOCS_BASE = "../docs/";
   var DEFAULT_KEY = "README";
@@ -353,11 +348,10 @@
 
   // ---- sidebar ----
   function buildSidebar() {
-    var html = '<div class="navhead">Contents</div>';
-    DOCS.forEach(function (d, i) {
-      var idx = i === 0 ? "&#9670;" : String(i).padStart(2, "0");
-      html += '<a href="#' + keyOf(d.file) + '" data-key="' +
-        keyOf(d.file) + '"><span class="idx">' + idx + "</span>" + d.title + "</a>";
+    var html = '', cur = null;
+    DOCS.forEach(function (d) {
+      if (d.section !== cur) { cur = d.section; html += '<div class="navhead">' + cur + '</div>'; }
+      html += '<a href="#' + keyOf(d.file) + '" data-key="' + keyOf(d.file) + '">' + d.title + '</a>';
     });
     $sidebar.innerHTML = html;
   }

@@ -253,7 +253,7 @@ make run            # tokenize and autostart in x64sc
 - The binary monitor must be enabled at launch (`-binarymonitor`); you can't attach to a plain `x64sc` afterwards. The default port here is 6502 (override with `VICE_BINMON_PORT`).
 - End your machine code with `rts` to return cleanly to BASIC, not an endless loop, unless you intend to take over the machine.
 
-**Go deeper** — full tool rundown and the live-reload design in [toolchain.md](toolchain.md); the from-zero on-ramp in [00-getting-started.md](00-getting-started.md); the working build/watch scripts in [basic/](../basic/); KERNAL `CHROUT` in [Appendix F](appendix-f-kernal-basic.md) and the colour registers `$D020`/`$D021` in [Appendix C](appendix-c-vic-registers.md).
+**Go deeper** — full tool rundown and the live-reload design in [Toolchain](toolchain.md); the from-zero on-ramp in [Getting Started](00-getting-started.md); the working build/watch scripts in [basic/](../basic/); KERNAL `CHROUT` in [Appendix F](appendix-f-kernal-basic.md) and the colour registers `$D020`/`$D021` in [Appendix C](appendix-c-vic-registers.md).
 
 ## 0.3 Numbers: binary, hex, bytes, signed
 

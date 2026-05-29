@@ -2,7 +2,7 @@
 
 Goal: go from nothing to **"my code runs on a (emulated) C64"** in one sitting,
 then know where to go next. This assumes assembly (the demoscene/game path); if
-you'd rather start in BASIC, jump to [basic-v2.md](basic-v2.md) and just type into
+you'd rather start in BASIC, jump to [Part V](part-5-basic.md) and just type into
 an emulator.
 
 ## The development loop
@@ -26,7 +26,7 @@ flowchart LR
 | Editor | VS Code + a KickAss/C64 extension | marketplace |
 
 (Full tool rundown and alternatives — cc65/llvm-mos/oscar64, debuggers, graphics
-and music tools — are in [toolchain.md](toolchain.md).)
+and music tools — are in [Toolchain](toolchain.md).)
 
 ## 2. Your first program
 
@@ -100,19 +100,19 @@ sequenceDiagram
 ```
 
 Don't write this from scratch yet — follow **Dustlayer's interrupt episode**
-(linked below); it walks each line. Then read [vic-ii.md](vic-ii.md) for *why*
+(linked below); it walks each line. Then read [Part III](part-3-vic.md) for *why*
 stable timing matters.
 
 ## 4. Where to go next
 
 | You want to… | Read |
 |--------------|------|
-| Understand the CPU you're coding | [cpu-6510.md](cpu-6510.md) |
-| Make graphics, sprites, raster effects | [vic-ii.md](vic-ii.md) → [demoscene-effects.md](demoscene-effects.md) |
-| Make sound/music | [sid.md](sid.md) |
-| Build a game | [game-dev-patterns.md](game-dev-patterns.md) |
-| Set up a serious toolchain | [toolchain.md](toolchain.md) |
-| Deploy to real hardware | [c64-ultimate.md](c64-ultimate.md) |
+| Understand the CPU you're coding | [Part I](part-1-foundations.md) |
+| Make graphics, sprites, raster effects | [Part III · VIC-II](part-3-vic.md) |
+| Make sound/music | [Part IV](part-4-sid.md) |
+| Build a game | [Part VI](part-6-game.md) |
+| Set up a serious toolchain | [Toolchain](toolchain.md) |
+| Deploy to real hardware | [C64 Ultimate](c64-ultimate.md) |
 
 ## Recommended tutorial series (the best on-ramps)
 

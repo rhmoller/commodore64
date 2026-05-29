@@ -1,79 +1,71 @@
-# C64 Programming Resource Library
+# C64 Dev Library
 
-A curated reference library for Commodore 64 development with a **demoscene and
-game-development** focus, covering both the **classic C64** and the modern
-**C64 Ultimate / Ultimate-64**. Each topic file pairs short *starter notes*
-(synthesized so you can get oriented fast) with an *annotated list of the best
-sources* (so you know where to dig deeper and why).
+A self-contained course and reference for **Commodore 64** development with a
+**demoscene + game** focus — assembly (KickAssembler) and BASIC, the 6510 CPU,
+the VIC-II and SID chips, and the modern **C64 Ultimate**. Every code example is
+assembled and run-verified in VICE.
 
-> Scope: assembly **and** BASIC; the 6510 CPU, the VIC-II video chip, and the
-> SID sound chip; classic demoscene effects; game architecture; the modern
-> cross-development toolchain; and what's new on the C64 Ultimate.
+> Read this in the bundled web viewer (`python3 viewer/serve.py`) for navigation,
+> Mermaid diagrams, syntax highlighting, and the embedded emulator screenshots.
 
 ```mermaid
 flowchart TD
-    GS["00 · Getting Started<br/>toolchain + first build"] --> CPU["CPU 6510<br/>instr set · memory · IRQ"]
-    CPU --> VIC["VIC-II<br/>screen · sprites · bad lines"]
-    CPU --> SID["SID<br/>voices · ADSR · filter"]
-    VIC --> DEMO["Demoscene effects<br/>rasters · FLD/FLI · scrollers"]
-    VIC --> GAME["Game dev patterns<br/>loop · multiplex · maps"]
-    SID --> GAME
-    SID --> DEMO
-    GS --> BASIC["BASIC V2<br/>PEEK/POKE · SYS"]
-    DEMO --> TOOL["Toolchain<br/>assemblers · emu · debug"]
-    GAME --> TOOL
-    TOOL --> ULT["C64 Ultimate<br/>deploy · network · REST"]
+    START["Start<br/>getting started + toolchain"] --> P0["Part 0–I<br/>orientation + 6502 foundations"]
+    P0 --> P2["Part II<br/>interrupts & timing"]
+    P2 --> P3["Part III<br/>VIC-II graphics"]
+    P2 --> P4["Part IV<br/>SID sound"]
+    P0 --> P5["Part V<br/>BASIC V2"]
+    P3 --> GAME["Part VI<br/>capstone: a game"]
+    P4 --> GAME
+    P3 --> DEMO["Part VII<br/>capstone: a demo"]
+    P4 --> DEMO
+    GAME --> ADV["Part VIII<br/>advanced"]
+    DEMO --> ADV
+    REF["Reference<br/>Appendices A–I · C64 Ultimate · Resources"]
 ```
 
-## How to use this library
+## How to use it
 
-1. **New to the machine?** Start with [`00-getting-started.md`](00-getting-started.md)
-   — it gets a cross-assembler + emulator running and walks the first build.
-2. **Learning the hardware?** Read the three chip files in order:
-   [CPU](cpu-6510.md) → [VIC-II](vic-ii.md) → [SID](sid.md). The C64 *is* its
-   chips; understanding the bus timing between CPU and VIC-II is the key that
-   unlocks the demoscene.
-3. **Building something?** Jump to [game-dev-patterns.md](game-dev-patterns.md)
-   or [demoscene-effects.md](demoscene-effects.md).
-4. **Targeting modern hardware?** See [c64-ultimate.md](c64-ultimate.md).
+- **The course** is [`CURRICULUM.md`](CURRICULUM.md) → Parts 0–VIII, read in order.
+  New to the machine? Begin at [Getting Started](00-getting-started.md).
+- **The reference** is the Appendices (opcodes, registers, memory map, KERNAL,
+  PETSCII, timing, glossary) — exhaustive tables the lessons cite.
+- **The links** to every external source (Codebase64, datasheets, tools,
+  tutorials) live on [Resources & Further Reading](resources.md).
 
 ## Contents
 
-| File | What it covers |
-|------|----------------|
-| [00-getting-started.md](00-getting-started.md) | Toolchain setup, your first assembled program, the iteration loop |
-| [cpu-6510.md](cpu-6510.md) | 6510/6502 instruction set, addressing, cycle timing, illegal opcodes, memory map, zero page, KERNAL/BASIC ROM, interrupts (IRQ/NMI/raster) |
-| [vic-ii.md](vic-ii.md) | VIC-II registers, screen/char/bitmap modes, sprites & multiplexing, bad lines, raster effects, border opening, scrolling |
-| [sid.md](sid.md) | SID 6581/8580 registers, voices, waveforms, ADSR, filter, digi playback, trackers, game SFX |
-| [basic-v2.md](basic-v2.md) | BASIC V2 limitations, PEEK/POKE, SYS/USR, calling machine code, useful tricks |
-| [demoscene-effects.md](demoscene-effects.md) | Catalog of classic effects (rasters, plasma, FLD/FLI, sprite stretch, scrollers, tunnels…) and how they work |
-| [game-dev-patterns.md](game-dev-patterns.md) | Main loop, frameskip/interpolation, collision, memory layout, map data, double buffering |
-| [toolchain.md](toolchain.md) | Cross-assemblers, C compilers, emulators/debuggers, trackers, graphics/charset editors, build workflows |
-| [c64-ultimate.md](c64-ultimate.md) | C64 Ultimate / Ultimate-64 / Ultimate-II+: new dev features, network/streaming, REU, socket & REST APIs |
+**Start** — [Getting Started](00-getting-started.md) · [Toolchain](toolchain.md) · [Curriculum / syllabus](CURRICULUM.md)
 
-## The "if you only bookmark five things" shortlist
+**Course** (each Part = lessons with verified KickAssembler code)
 
-- **[Codebase64](https://codebase64.c64.org/)** — the community wiki; routines,
-  tutorials, effect write-ups, illegal opcodes. Your first stop for "how do I do X".
-- **[C64 Programmer's Reference Guide](https://archive.org/details/c64-programmer-ref)**
-  — the official 1982/83 manual (BASIC, KERNAL, VIC-II, SID). A local,
-  text-searchable copy is in [`reference/`](reference/c64-programmers-reference-guide.pdf).
-- **[Mapping the Commodore 64](https://www.zimmers.net/anonftp/pub/cbm/c64/manuals/mapping-c64.txt)**
-  — annotated `$0000–$FFFF` memory map.
-- **[C64-Wiki](https://www.c64-wiki.com/)** — fast lookups for any register,
-  command, or chip.
-- **[Christian Bauer's VIC-II article](https://www.cebix.net/VIC-Article.txt)**
-  — the canonical reverse-engineering of VIC-II timing; the demoscene bible.
+| Part | Covers |
+|------|--------|
+| [0 · Orientation](part-0-orientation.md) | the machine, the dev loop, number systems |
+| [I · 6502/6510 Foundations](part-1-foundations.md) | instruction set, addressing, memory/banking, math, tables, optimization, KERNAL |
+| [II · Interrupts & Timing](part-2-interrupts.md) | the bus, IRQ/NMI, raster & stable raster, CIA timers, input |
+| [III · VIC-II Graphics](part-3-vic.md) | text/bitmap modes, scrolling, sprites, multiplexing, bad lines, raster effects |
+| [IV · SID Sound](part-4-sid.md) | registers, waveforms, ADSR, filter, players, GoatTracker, SFX, digi |
+| [V · BASIC V2](part-5-basic.md) | the language, PEEK/POKE/SYS/USR, BASIC+ML hybrids, tricks |
+| [VI · Capstone: a Game](part-6-game.md) | *Gem Catcher* — a complete playable game, start to finish |
+| [VII · Capstone: a Demo](part-7-demo.md) | a complete intro — raster bars, logo, sprites, scroller, music |
+| [VIII · Advanced](part-8-advanced.md) | LUT math, RAM under ROMs, loaders, PAL/NTSC, the C64 Ultimate |
+
+**Reference**
+
+| Page | What |
+|------|------|
+| [Appendix A](appendix-a-opcodes.md)–[I](appendix-i-glossary.md) | opcodes · memory map · VIC-II / SID / CIA registers · KERNAL & BASIC · PETSCII · timing · glossary |
+| [C64 Ultimate](c64-ultimate.md) | the modern FPGA C64 — features, expansions, UCI & REST APIs |
+| [Resources & Further Reading](resources.md) | the annotated external link directory |
 
 ## Provenance / confidence
 
-This library was assembled from a multi-source research pass with adversarial
-fact-checking. Hardware facts (CPU/VIC-II/SID/memory-map) rest on primary
-sources — manufacturer datasheets, the official Programmer's Reference Guide,
-and Christian Bauer's canonical VIC-II reverse-engineering article — and were
-verified with high confidence. Tool/version details and the C64 Ultimate
-feature set change over time; **link-check and re-verify those before relying on
-them**. Where a claim comes from a single (if credible) source, the topic file
-notes it.
+The reference rests on primary sources — manufacturer datasheets, the official
+Programmer's Reference Guide (local copy in [`reference/`](reference/c64-programmers-reference-guide.pdf)),
+and Christian Bauer's canonical VIC-II article — adversarially fact-checked.
+**Every code example was assembled and run in VICE** (screenshot- or
+register-asserted), not just eyeballed. Tool versions and the C64 Ultimate
+feature set change over time — re-verify those before relying on them.
 
-*Last assembled: 2026-05-29.*
+*Built 2026-05-29.*

@@ -129,7 +129,7 @@ API — capture/record/remote-view without a capture card.
 - Validate **cycle-exact VIC-II timing** and **analog SID behavior** on stock
   silicon and in `x64sc` too; the FPGA is extremely close, but turbo mode and SID
   model selection change behavior. Fitting two real SID chips sidesteps the
-  6581-vs-8580 emulation question for audio (see [sid.md](sid.md)).
+  6581-vs-8580 emulation question for audio (see [Part IV](part-4-sid.md)).
 - Demos that abuse undocumented edge cases are the usual compatibility frontier;
   firmware is actively updated, so check the changelog.
 

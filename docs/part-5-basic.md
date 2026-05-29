@@ -375,7 +375,7 @@ Commodore BASIC V2 lives in ROM at `$A000-$BFFF` and is the same interpreter Com
 
 ### The honest limits
 
-**It is interpreted and SLOW.** Every time the interpreter reaches a line it re-parses tokens, looks variables up by linear search through the variable table, and does all arithmetic in floating point. Realistic throughput is only a few thousand BASIC statements per second. There are 50 (PAL) or 60 (NTSC) frames per second, so a BASIC loop manages only a few dozen statements per frame. Anything that must run every frame -- scrolling, sprite multiplexing, music players -- belongs in machine code called via `SYS` (see [docs/basic-v2.md](basic-v2.md) on SYS/USR). BASIC's job is setup, menus, level scripting, and prototyping.
+**It is interpreted and SLOW.** Every time the interpreter reaches a line it re-parses tokens, looks variables up by linear search through the variable table, and does all arithmetic in floating point. Realistic throughput is only a few thousand BASIC statements per second. There are 50 (PAL) or 60 (NTSC) frames per second, so a BASIC loop manages only a few dozen statements per frame. Anything that must run every frame -- scrolling, sprite multiplexing, music players -- belongs in machine code called via `SYS` (see [docs/basic-v2.md](resources.md) on SYS/USR). BASIC's job is setup, menus, level scripting, and prototyping.
 
 **Math is float-only and slow.** Numbers are stored as 5-byte floats. Integer variables (`A%`) exist, but the interpreter converts them *to* float for almost every operation and back again, so `A%` is often slower than a plain float variable, not faster -- its real value is saving memory in large arrays. There is no fast integer path the way a compiled language has.
 
@@ -524,7 +524,7 @@ What you see: the message prints, a long count runs during which RUN/STOP does n
 - The jiffy clock counts IRQs (1/60 s each), so `TI`/`TI$` drift on PAL machines and stop advancing if you disable or hijack the IRQ.
 - Border/background/STOP pokes use *decimal* in BASIC (53280, 808, 788); the hex names ($D020 etc.) are for reference only.
 
-**Go deeper** -- [C64 Programmer's Reference Guide](https://archive.org/details/c64-programmer-ref) (BASIC V2 language reference and the keyboard-buffer / jiffy-clock locations); cross-references in [docs/basic-v2.md](basic-v2.md), [Appendix B](appendix-b-memory-map.md), [Appendix E](appendix-e-cia-registers.md), and [Appendix G](appendix-g-petscii.md).
+**Go deeper** -- [C64 Programmer's Reference Guide](https://archive.org/details/c64-programmer-ref) (BASIC V2 language reference and the keyboard-buffer / jiffy-clock locations); cross-references in [docs/basic-v2.md](resources.md), [Appendix B](appendix-b-memory-map.md), [Appendix E](appendix-e-cia-registers.md), and [Appendix G](appendix-g-petscii.md).
 
 
 ---

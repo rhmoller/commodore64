@@ -71,7 +71,7 @@ timing work; `x64` is faster but less precise.
 
 ## Music tools
 
-See [sid.md](sid.md) for detail: **GoatTracker 2** (cross-platform, exports asm),
+See [Part IV](part-4-sid.md) for detail: **GoatTracker 2** (cross-platform, exports asm),
 **SID-Wizard** (native), **SID Factory II** (modern). All integrate by exporting a
 player + data you `.import`/`incbin` into your build.
 
@@ -82,7 +82,7 @@ player + data you `.import`/`incbin` into your build.
    file.
 3. Auto-launch VICE with the symbols for source-level breakpoints, or load the
    `.prg`/`.d64` on a C64 Ultimate over the network (see
-   [c64-ultimate.md](c64-ultimate.md)) to test on real silicon.
+   [C64 Ultimate](c64-ultimate.md)) to test on real silicon.
 4. Iterate. Convert graphics/music as part of the assemble step (KickAss can
    import PNG/SID at build time) so there's one command.
 

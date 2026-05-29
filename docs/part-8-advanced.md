@@ -631,14 +631,14 @@ The recreated 6510 can run far above the stock ~1.023 MHz (PAL) / ~1.023 MHz reg
 
 It is a trap for **cycle-exact** code. Raster splits, FLI, stable rasters, and SID timing all assume the stock relationship between the CPU clock and the VIC-II's 504/525-cycle line. Turbo decouples that. The discipline:
 
-- Develop and validate cycle-exact effects at **1 MHz** in `x64sc` (the single-cycle-accurate VICE build — see [toolchain.md](toolchain.md)).
+- Develop and validate cycle-exact effects at **1 MHz** in `x64sc` (the single-cycle-accurate VICE build — see [Toolchain](toolchain.md)).
 - Never *depend* on turbo being on. If you want a speed bonus, detect/allow it but degrade gracefully.
 
 There is no portable, documented "am I in turbo?" bit you should hardcode a demo around — treat turbo as a user/firmware setting, not an API.
 
 ### The REU — RAM Expansion Unit (up to 16 MB)
 
-The classic Commodore REU is a DMA controller plus extra RAM that lives behind I/O area #2 (`$DF00–$DFFF`, the expansion port second I/O page — see [appendix-b-memory-map.md](appendix-b-memory-map.md)). On the C64 Ultimate, 16 MB of the onboard DDR2 is allocated to an REU that ships **enabled** out of the box.
+The classic Commodore REU is a DMA controller plus extra RAM that lives behind I/O area #2 (`$DF00–$DFFF`, the expansion port second I/O page — see [Appendix B](appendix-b-memory-map.md)). On the C64 Ultimate, 16 MB of the onboard DDR2 is allocated to an REU that ships **enabled** out of the box.
 
 The point of an REU is that it does not move bytes one `lda/sta` at a time. You set up a few registers and trigger a **block DMA**: the controller copies a whole region between C64 RAM and REU RAM in (essentially) one go. The four operations:
 
@@ -661,7 +661,7 @@ The point of an REU is that it does not move bytes one `lda/sta` at a time. You 
 
 The two low bits of the command select the operation; the common encodings are STASH = `%00`, FETCH = `%01`, SWAP = `%10`, VERIFY = `%11`. Bit 7 (`$80`) is "execute now". A very common pattern uses the "FF00 decode disable" trick (`$DF01` bit 4) so the DMA fires the instant you write `$FF00`; the simplest correct form, used below, just sets bit 7 in the command itself.
 
-> The full register semantics and the firmware's REU allocation are documented on [the C64 Ultimate page](c64-ultimate.md) and the Ultimate ReadTheDocs linked there. The appendices in this course cover the *stock* machine; `$DF00–$DFFF` appears in [appendix-b-memory-map.md](appendix-b-memory-map.md) only as the open expansion-port I/O #2 page.
+> The full register semantics and the firmware's REU allocation are documented on [the C64 Ultimate page](c64-ultimate.md) and the Ultimate ReadTheDocs linked there. The appendices in this course cover the *stock* machine; `$DF00–$DFFF` appears in [Appendix B](appendix-b-memory-map.md) only as the open expansion-port I/O #2 page.
 
 #### EXCERPT — stash then fetch a block (assembles; needs a real/enabled REU to move data)
 
@@ -746,7 +746,7 @@ From your PC, the Ultimate exposes an **HTTP REST API**. The most useful route f
 
 #### This repo mirrors that loop locally
 
-The Ultimate's "POST a prg, it runs" loop is exactly what this course's tooling does against the emulator (see [toolchain.md](toolchain.md)):
+The Ultimate's "POST a prg, it runs" loop is exactly what this course's tooling does against the emulator (see [Toolchain](toolchain.md)):
 
 - **`tools/vice_run.py`** boots a `.prg` in headless VICE under `xvfb-run`, takes a screenshot, and can `--assert` memory/registers over VICE's binary monitor — the automated-verification analog of `peek` over the REST API.
 - **`tools/vice_reload.py`** drives a *running* emulator via the binary monitor to autostart a fresh build or hot-swap memory in place — the live-reload analog of the REST runners endpoint.
@@ -819,7 +819,7 @@ hang:
 
 Expected result: byte at **`$0340` is `$3B`**. The border and background are black (`$D020`/`$D021` low nibble `0`). On a plain or headless machine `$0341` reads `$00`; do not assert it.
 
-You can run and assert it with the repo tooling (see [toolchain.md](toolchain.md)):
+You can run and assert it with the repo tooling (see [Toolchain](toolchain.md)):
 
 ```
 python tools/vice_run.py check lesson85.prg --assert $0340=$3b --screenshot out.png
@@ -835,7 +835,7 @@ python tools/vice_run.py check lesson85.prg --assert $0340=$3b --screenshot out.
 - **Asserting open-bus reads.** `$DF00–$DFFF` reads are undefined without an REU/cartridge; never assert their contents in a portable test (hence `$0341` is informational only).
 - **Stray data before `$0801`.** Keep state variables at fixed addresses with `.const`/explicit `*=`, never as `.byte` emitted ahead of the load address, or the BASIC stub/load address shifts.
 
-**Go deeper:** Full hardware, UCI, REST API, and authoritative Ultimate documentation links are on [c64-ultimate.md](c64-ultimate.md); the build/deploy/verify loop and how `tools/vice_run.py` mirror the REST API are in [toolchain.md](toolchain.md). The `$DF00–$DFFF` expansion I/O page is listed in [appendix-b-memory-map.md](appendix-b-memory-map.md), and the opcodes used here are in [appendix-a-opcodes.md](appendix-a-opcodes.md).
+**Go deeper:** Full hardware, UCI, REST API, and authoritative Ultimate documentation links are on [C64 Ultimate](c64-ultimate.md); the build/deploy/verify loop and how `tools/vice_run.py` mirror the REST API are in [Toolchain](toolchain.md). The `$DF00–$DFFF` expansion I/O page is listed in [Appendix B](appendix-b-memory-map.md), and the opcodes used here are in [Appendix A](appendix-a-opcodes.md).
 
 
 ---
