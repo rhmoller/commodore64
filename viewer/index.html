@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C64 Dev Library</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Vendored, offline-capable. marked => window.marked, mermaid => window.mermaid -->
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/mermaid.min.js"></script>
+</head>
+<body>
+  <div class="bezel">
+    <header class="topbar">
+      <button id="navToggle" class="iconbtn" aria-label="Toggle navigation">&#9776;</button>
+      <div class="brand">
+        <span class="cursor">&#9608;</span>
+        <span class="brandtext">C64&nbsp;DEV&nbsp;LIBRARY</span>
+      </div>
+      <div class="spacer"></div>
+      <button id="crtToggle" class="iconbtn" title="Toggle CRT scanlines">CRT</button>
+      <a id="rawLink" class="iconbtn" target="_blank" rel="noopener" title="View raw markdown">RAW</a>
+    </header>
+
+    <div class="layout">
+      <nav id="sidebar" class="sidebar" aria-label="Documents"></nav>
+
+      <main class="content">
+        <article id="doc" class="markdown-body">
+          <p class="loading">Loading&hellip;</p>
+        </article>
+        <nav class="pager" id="pager"></nav>
+      </main>
+
+      <aside id="toc" class="toc" aria-label="On this page"></aside>
+    </div>
+
+    <div id="scrim" class="scrim"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# build artifacts (regenerate with petcat / the assembler)
+*.prg
+*.d64
+*.d71
+*.d81
+*.t64
+*.crt
+# KickAssembler VICE debug symbols
+*.vs
+
+# Large, re-downloadable reference: the Programmer's Reference Guide PDF is ~45 MB.
+# The searchable .txt is kept; re-fetch the PDF per docs/reference/README.md.
+docs/reference/*.pdf
+
+# tooling / scratch
+.playwright-mcp/
+__pycache__/
+*.pyc
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
