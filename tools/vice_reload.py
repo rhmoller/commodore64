@@ -23,10 +23,12 @@ import struct
 import sys
 
 # command types
+CMD_MEMORY_GET = 0x01
 CMD_MEMORY_SET = 0x02
 CMD_RESET      = 0xcc
 CMD_AUTOSTART  = 0xdd
 CMD_EXIT       = 0xaa
+CMD_QUIT       = 0xbb
 CMD_PING       = 0x81
 
 API = 0x02
@@ -105,6 +107,21 @@ class Mon:
             raise ValueError("filename too long")
         body = struct.pack("<BHB", 1 if run else 0, 0, len(fn)) + fn
         return self.command(CMD_AUTOSTART, body)
+
+    def memory_get(self, start, end, memspace=0, bank=0, side_effects=0):
+        """Read [start, end] inclusive from the running machine. Returns bytes."""
+        body = struct.pack("<BHHBH", side_effects, start, end, memspace, bank)
+        err, resp = self.command(CMD_MEMORY_GET, body)
+        if err:
+            raise ConnectionError(f"memory_get error 0x{err:02x}")
+        if self.dry_run:
+            return b""
+        (n,) = struct.unpack("<H", resp[:2])
+        return resp[2:2 + n]
+
+    def quit(self):
+        """Tell VICE to quit the emulator."""
+        return self.command(CMD_QUIT)
 
     def memory_set(self, start, data, memspace=0, bank=0, side_effects=0):
         end = start + len(data) - 1

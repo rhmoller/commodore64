@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# KickAssembler wrapper — runs the vendored jar with the system JVM.
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+exec java -jar "$here/vendor/KickAss.jar" "$@"

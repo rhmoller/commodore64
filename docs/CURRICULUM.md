@@ -117,8 +117,8 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Section | Status |
 |---------|--------|
 | Appendices A–I | ✅ (researched + adversarially verified) |
-| Part 0 | ⬜ |
-| Part I | ⬜ |
+| Part 0 | ✅ (all code assembles in KickAssembler) |
+| Part I | ✅ (all code assembles in KickAssembler) |
 | Part II | ⬜ |
 | Part III | ⬜ |
 | Part IV | ⬜ |

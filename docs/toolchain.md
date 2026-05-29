@@ -101,6 +101,21 @@ loop. The same mechanism works for assembly builds. It's the nearest C64 equival
 to web HMR — full code-HMR with state preservation isn't possible (no module
 system; a program is one blob at a fixed load address).
 
+### Headless verification (`tools/vice_run.py`)
+
+For automated checking, `tools/vice_run.py` runs a `.prg` (or assembles a `.asm`
+first) in **headless VICE** under `xvfb-run` — no display needed. Two modes:
+
+- `run PRG --screenshot out.png` — boot under warp, save an exit screenshot, and
+  flag a **CPU JAM/crash**.
+- `check PRG --assert d021=6:0f --screenshot out.png` — boot, settle, then assert
+  memory/register values over the binary monitor (`:MASK` handles I/O registers
+  whose unused bits read as 1), with an optional screenshot.
+
+This powers the course's verification: example code is **assembled, run, screenshot
+(for visual vision-checks), and state-asserted** rather than just eyeballed.
+Requires `xorg-server-xvfb`.
+
 ## Annotated resources
 
 - **[KickAssembler manual](https://theweb.dk/KickAssembler/Main.html)** *(primary)* — the
