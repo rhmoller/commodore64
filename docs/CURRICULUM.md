@@ -120,7 +120,7 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Part 0 | ✅ (all code assembles in KickAssembler) |
 | Part I | ✅ (all code assembles in KickAssembler) |
 | Part II | ✅ (assembled + run headless in VICE; 2 bugs caught & fixed via screenshot/assert) |
-| Part III | ⬜ |
+| Part III | 🟨 III-A done (3.1–3.5: memory, text/charset, bitmap, ECM, scrolling — verified in VICE); III-B (sprites, multiplexing, bad lines, effects) pending |
 | Part IV | ⬜ |
 | Part V | ⬜ |
 | Part VI (game) | ⬜ |

@@ -116,6 +116,9 @@ wait2:  lda $d012
         jmp loop                    // do it again every frame
 ```
 
+![The screen interior is black, and the border is split horizontally — the upper part of the border is blue, and from roug](img/part-2-interrupts-01.png)
+
+
 What you should see: the screen interior is black, and the **border is split horizontally** — the upper part of the border is blue, and from roughly the vertical middle (raster line 120) downward the border is red. The split holds steady and does not flicker.
 
 ### Storing the raster value
@@ -423,6 +426,9 @@ exit:
         jmp $ea81           // KERNAL: RTI (we already restored registers)
 ```
 
+![Three-band raster split: blue, red and green horizontal bands.](img/part-2-interrupts-03.png)
+
+
 All three compare lines (50, 130, 210) are below 256, so RST8 stays 0. If you split below the bad-line range you must remember badlines steal cycles ([Appendix H §H.2](appendix-h-timing.md)); for plain colour changes that only adds to the jitter discussed next.
 
 ### The jitter problem
@@ -525,6 +531,9 @@ irqB:
         sta $d012
         jmp $ea81
 ```
+
+![The top portion of the screen has a light blue background and border; below the split line the background and border tur](img/part-2-interrupts-04.png)
+
 
 To make the top return to light blue every frame, have `irqA` also write `#$0e` to `$D020/$D021` *before* arming `irqB`; because `irqA` runs near the bottom-1 line it sets the colour for the wrap to the top. (Try it: add `lda #$0e / sta $d020 / sta $d021` at the start of `irqA`.)
 
@@ -694,6 +703,9 @@ done:
 
 counter: .byte 0
 ```
+
+![A normal blue BASIC screen with the usual READY](img/part-2-interrupts-05.png)
+
 
 **What you should see:** a normal blue BASIC screen with the usual `READY.` text, and the **border colour cycling rapidly through all 16 colours**, changing roughly five times per second (a visible flicker of border colours). The screen interior and text stay unchanged. Because we left the KERNAL IRQ chain intact via `JMP $EA31`, the cursor still blinks and the keyboard still responds.
 

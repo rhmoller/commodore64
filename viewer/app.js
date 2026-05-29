@@ -4,6 +4,7 @@
    - renders with marked, converts ```mermaid blocks, themes mermaid
    - hash routing (#cpu-6510), internal .md link interception
    - sidebar nav, on-page TOC, prev/next pager, CRT toggle
+   - 6502/KickAssembler syntax highlighting for ```asm blocks
    ============================================================ */
 (function () {
   "use strict";
@@ -16,6 +17,7 @@
     { file: "part-0-orientation.md",   title: "Part 0 · Orientation" },
     { file: "part-1-foundations.md",   title: "Part I · 6502 Foundations" },
     { file: "part-2-interrupts.md",    title: "Part II · Interrupts & Timing" },
+    { file: "part-3-vic.md",           title: "Part III · VIC-II Graphics" },
     { file: "cpu-6510.md",             title: "CPU · 6510 (overview)" },
     { file: "vic-ii.md",               title: "VIC-II" },
     { file: "sid.md",                  title: "SID" },
@@ -65,6 +67,184 @@
 
   // ---- marked + mermaid setup ----
   marked.setOptions({ gfm: true, breaks: false });
+
+  // ---- 6502/KickAssembler syntax highlighting for ```asm blocks ----
+  var ASM_KEYWORDS = [
+    // documented 6502 instructions
+    'ADC','AND','ASL','BCC','BCS','BEQ','BIT','BMI','BNE','BPL','BRK',
+    'BVC','BVS','CLC','CLD','CLI','CLV','CMP','CPX','CPY','DEC','DEX',
+    'DEY','EOR','INC','INX','INY','JMP','JSR','LDA','LDX','LDY','LSR',
+    'NOP','ORA','PHA','PHP','PLA','PLP','ROL','ROR','RTI','RTS','SBC',
+    'SEC','SED','SEI','STA','STX','STY','TAX','TAY','TSX','TXA','TXS','TYA',
+    // stable illegal opcodes
+    'ANC','ALR','ARR','DCP','ISC','LAX','LAS','RLA','RRA','SAX','SBX',
+    'SLO','SRE',
+    // KickAssembler directives
+    '.align','.assert','.byte','.const','.cpu','.define','.disposition',
+    '.enc','.enum','.error','.eval','.file','.fill','.for','.function',
+    '.import','.importbinary','.importc64','.importonce','.label','.let',
+    '.macro','.namespace','.pc','.print','.pseudocommand','.return',
+    '.segment','.segmentdef','.struct','.text','.var','.watch','.word',
+    '.fillword','.dsection','.lohifill',
+    // common KickAssembler macros
+    'BasicUpstart2','BasicUpstart','Break','makeScreen','print',
+    // flag & register names sometimes written uppercase
+    'LORAM','HIRAM','CHAREN','RST8','DEN','RSEL','YSCROLL',
+    // addressing-mode keywords used in expressions
+    'lo','hi','bank','bank0','bank1','bank2','bank3'
+  ];
+  // Case-insensitive keyword lookup set.
+  var ASM_KEYWORD_SET = {};
+  ASM_KEYWORDS.forEach(function (k) { ASM_KEYWORD_SET[k.toLowerCase()] = true; });
+
+  function highlightAsm(src) {
+    var lines = src.split('\n');
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      out.push(highlightAsmLine(lines[i]));
+    }
+    return out.join('\n');
+  }
+
+  function highlightAsmLine(line) {
+    // 1) Split off comments (// or ;) that are not inside a string
+    var comment = '';
+    var body = line;
+    var ci = indexOfAsmComment(body);
+    if (ci >= 0) {
+      comment = body.substring(ci);
+      body = body.substring(0, ci);
+    }
+
+    // 2) Label at start of line: optional whitespace, identifier, colon
+    var label = '';
+    var rest = body;
+    var labelMatch = body.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*?)\s*:/);
+    if (labelMatch && labelMatch[1].length === (body.length - body.trimStart().length)) {
+      // Only treat as label if the : is at the start (not mid-line like a ternary)
+      label = labelMatch[1] + labelMatch[2] + ':';
+      rest = body.substring(label.length);
+    }
+
+    // 3) Tokenise the rest
+    var highlighted = '';
+    if (rest) {
+      highlighted = tokeniseAsmBody(rest);
+    }
+
+    var result = '';
+    if (label) result += '<span class="asmlabel">' + escapeHtml(label) + '</span>';
+    if (highlighted) {
+      // preserve the space between label and operands
+      result += highlighted;
+    }
+    if (comment) result += '<span class="asmcomment">' + escapeHtml(comment) + '</span>';
+    return result || '';
+  }
+
+  // Find first // or ; not inside a double-quoted string
+  function indexOfAsmComment(s) {
+    var inStr = false;
+    for (var i = 0; i < s.length; i++) {
+      var ch = s[i];
+      if (ch === '"') inStr = !inStr;
+      if (!inStr) {
+        if (ch === ';' || (ch === '/' && i + 1 < s.length && s[i + 1] === '/')) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  function tokeniseAsmBody(s) {
+    var tokens = [];
+    var i = 0;
+    while (i < s.length) {
+      // Whitespace — emit as-is
+      if (/^\s/.test(s[i])) {
+        var ws = '';
+        while (i < s.length && /^\s/.test(s[i])) { ws += s[i]; i++; }
+        tokens.push(ws);
+        continue;
+      }
+
+      // String literal "..."
+      if (s[i] === '"') {
+        var str = '"';
+        i++;
+        while (i < s.length && s[i] !== '"') { str += s[i]; i++; }
+        if (i < s.length) { str += '"'; i++; }
+        tokens.push('<span class="asmstring">' + escapeHtml(str) + '</span>');
+        continue;
+      }
+
+      // Hex number $xxxx
+      if (s[i] === '$' && i + 1 < s.length && /[0-9A-Fa-f]/.test(s[i + 1])) {
+        var hex = '$';
+        i++;
+        while (i < s.length && /[0-9A-Fa-f]/.test(s[i])) { hex += s[i]; i++; }
+        tokens.push('<span class="asmnumber">' + hex + '</span>');
+        continue;
+      }
+
+      // Binary number %xxxx
+      if (s[i] === '%' && i + 1 < s.length && /[01]/.test(s[i + 1])) {
+        var bin = '%';
+        i++;
+        while (i < s.length && /[01]/.test(s[i])) { bin += s[i]; i++; }
+        tokens.push('<span class="asmnumber">' + bin + '</span>');
+        continue;
+      }
+
+      // Decimal number
+      if (/[0-9]/.test(s[i])) {
+        var dec = '';
+        while (i < s.length && /[0-9]/.test(s[i])) { dec += s[i]; i++; }
+        tokens.push('<span class="asmnumber">' + dec + '</span>');
+        continue;
+      }
+
+      // Identifier — check against keyword set
+      if (/[A-Za-z_.]/.test(s[i])) {
+        var id = '';
+        while (i < s.length && /[A-Za-z0-9_.]/.test(s[i])) { id += s[i]; i++; }
+        if (ASM_KEYWORD_SET[id.toLowerCase()]) {
+          tokens.push('<span class="asmkeyword">' + escapeHtml(id) + '</span>');
+        } else {
+          tokens.push(escapeHtml(id));
+        }
+        continue;
+      }
+
+      // Punctuation / operators
+      tokens.push(escapeHtml(s[i]));
+      i++;
+    }
+    return tokens.join('');
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Register a marked extension that intercepts fenced code blocks with language "asm"
+  marked.use({
+    renderer: {
+      code: function (token) {
+        var lang = token.lang || '';
+        if (lang.toLowerCase() === 'asm') {
+          var highlighted = highlightAsm(token.text);
+          var langClass = 'lang-asm';
+          return '<pre class="' + langClass + '"><code class="' + langClass + '">' +
+            highlighted + '</code></pre>';
+        }
+        // Fall through — default marked behaviour for all other languages
+        return false;
+      }
+    }
+  });
+
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "loose",          // allow <br/> html labels in nodes
@@ -211,7 +391,7 @@
       .then(function (md) { cache[doc.file] = md; finish(md); })
       .catch(function (err) {
         $doc.innerHTML =
-          '<h1>Couldn’t load this page</h1>' +
+          '<h1>Couldn\'t load this page</h1>' +
           "<p><code>" + DOCS_BASE + doc.file + "</code> &rarr; " + err.message + "</p>" +
           "<blockquote>This viewer must be served over HTTP (not opened as a " +
           "<code>file://</code> URL), and the server root must be the repository " +

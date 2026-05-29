@@ -239,6 +239,38 @@ a:hover { text-decoration: underline; }
   color: var(--c64-lgreen); font-size: .86rem; line-height: 1.5;
 }
 
+/* ---- 6502/KickAssembler syntax highlighting for ```asm blocks ---- */
+.markdown-body pre.lang-asm code.lang-asm {
+  color: #b8b0e6;                /* base text: muted lavender */
+}
+
+/* Keywords (instructions, directives, macros) */
+.markdown-body .asmkeyword {
+  color: var(--c64-yellow);      /* warm yellow — C64 yellow */
+  font-weight: 600;
+}
+
+/* Numbers (hex $xx, binary %xx, decimal) */
+.markdown-body .asmnumber {
+  color: var(--c64-lblue-2);     /* light blue accent */
+}
+
+/* String literals */
+.markdown-body .asmstring {
+  color: var(--c64-lgreen);      /* listing green */
+}
+
+/* Labels (identifier: at start of line) */
+.markdown-body .asmlabel {
+  color: var(--c64-cyan);        /* cyan — distinct from keywords/numbers */
+}
+
+/* Comments */
+.markdown-body .asmcomment {
+  color: var(--ink-dim);         /* dimmed text */
+  font-style: italic;
+}
+
 /* tables */
 .markdown-body table {
   border-collapse: collapse;
@@ -298,8 +330,18 @@ a:hover { text-decoration: underline; }
   text-align: left; padding: 12px;
 }
 
-/* images */
-.markdown-body img { max-width: 100%; height: auto; border-radius: 8px; }
+/* images — C64 emulator screenshots: keep pixels crisp, framed, centered */
+.markdown-body img {
+  max-width: min(100%, 480px);
+  height: auto;
+  display: block;
+  margin: 1.3em auto;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  background: #000;
+  padding: 4px;
+  image-rendering: pixelated;
+}
 
 /* ---------- pager ---------- */
 .pager {

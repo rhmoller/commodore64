@@ -14,6 +14,7 @@ docs/reference/*.pdf
 
 # tooling / scratch
 .playwright-mcp/
+.botface/
 __pycache__/
 *.pyc
 
