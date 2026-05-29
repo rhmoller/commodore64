@@ -15,6 +15,7 @@
     { file: "00-getting-started.md",   title: "Getting Started" },
     { file: "part-0-orientation.md",   title: "Part 0 · Orientation" },
     { file: "part-1-foundations.md",   title: "Part I · 6502 Foundations" },
+    { file: "part-2-interrupts.md",    title: "Part II · Interrupts & Timing" },
     { file: "cpu-6510.md",             title: "CPU · 6510 (overview)" },
     { file: "vic-ii.md",               title: "VIC-II" },
     { file: "sid.md",                  title: "SID" },

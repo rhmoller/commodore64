@@ -119,7 +119,7 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Appendices A–I | ✅ (researched + adversarially verified) |
 | Part 0 | ✅ (all code assembles in KickAssembler) |
 | Part I | ✅ (all code assembles in KickAssembler) |
-| Part II | ⬜ |
+| Part II | ✅ (assembled + run headless in VICE; 2 bugs caught & fixed via screenshot/assert) |
 | Part III | ⬜ |
 | Part IV | ⬜ |
 | Part V | ⬜ |
