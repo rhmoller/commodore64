@@ -124,7 +124,7 @@ Legend: ⬜ not started · 🟦 researching · 🟨 drafted · ✅ done
 | Part IV | ✅ 4.1–4.9 (registers, waveforms, ADSR/hard-restart, PWM/ring/sync, filter, player anatomy, GoatTracker integration, game SFX engine, digi) — assembled + register-asserted in VICE |
 | Part V | ✅ 5.1–5.4 (the language, PEEK/POKE/SYS/USR, BASIC+ML hybrids, limits & tricks) — petcat-tokenised + run in VICE; screenshots embedded |
 | Part VI (game) | ✅ "Gem Catcher" — complete game (sprites, raster-IRQ loop, joystick, collision, score, SID SFX); assembles + runs in VICE, screenshot verified |
-| Part VII (demo) | ⬜ |
+| Part VII (demo) | ✅ "C64 DEV LIBRARY" intro — stable raster colourwash + logo + sine sprites + scroller + SID music, all in one raster IRQ; assembles + runs in VICE, screenshot verified |
 | Part VIII | ⬜ |
 
 *Build order: Appendices first (the reference backbone every lesson cites), then

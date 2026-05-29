@@ -21,6 +21,7 @@
     { file: "part-4-sid.md",           title: "Part IV · SID Sound" },
     { file: "part-5-basic.md",         title: "Part V · BASIC V2" },
     { file: "part-6-game.md",          title: "Part VI · Capstone: Game" },
+    { file: "part-7-demo.md",          title: "Part VII · Capstone: Demo" },
     { file: "cpu-6510.md",             title: "CPU · 6510 (overview)" },
     { file: "vic-ii.md",               title: "VIC-II" },
     { file: "sid.md",                  title: "SID" },
