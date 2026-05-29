@@ -113,7 +113,7 @@ it calls RAMTAS, RESTOR, IOINIT, CINT, then jumps to BASIC cold start.
 
 KERNAL labels for clarity:
 
-```kickass
+```asm
 .label CHROUT = $ffd2   // output A as PETSCII
 .label GETIN  = $ffe4   // get queued keypress into A
 .label CHRIN  = $ffcf   // input char from current channel
@@ -124,7 +124,7 @@ KERNAL labels for clarity:
 
 ### Print a null-terminated string via CHROUT ($FFD2)
 
-```kickass
+```asm
 *=$0801 "BASIC"
 :BasicUpstart2(start)          // SYS 2061 stub
 
@@ -145,7 +145,7 @@ message:
 
 ### Read a key via GETIN ($FFE4) and echo it
 
-```kickass
+```asm
 *=$0801 "BASIC"
 :BasicUpstart2(start)
 
@@ -162,7 +162,7 @@ exit:   rts
 
 ### Set cursor position with PLOT ($FFF0)
 
-```kickass
+```asm
         clc                    // C=0 => set cursor position
         ldx #10                // row (0..24)
         ldy #5                 // column (0..39)

@@ -117,7 +117,7 @@ All addresses are **relative to the current 16K VIC bank** (selected by CIA-2 $D
 
 Common default: $D018 = $15 → VM=%0001 (screen at $0400), CB=%010 (chars at $1000 = char ROM).
 
-```kickass
+```asm
 // Bank 0 ($0000-$3FFF): screen at $0400, bitmap at $2000
 lda #%00011000      // VM10..VM13 = %0001 -> $0400 ; CB13 = 1 -> $2000
 sta $d018

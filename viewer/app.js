@@ -315,12 +315,15 @@
           text = codeOrToken || '';
           lang = infostring || '';
         }
-        var l0 = lang.split(/\s+/)[0].toLowerCase();
-        if (l0 === 'asm') {
+        var l0 = (lang.split(/\s+/)[0] || '').toLowerCase();
+        // accept common aliases so a mistagged fence still highlights
+        var ASM = ['asm','assembly','kickass','kickasm','kickassembler','6502','6510','acme','ca65','64tass','tass'];
+        var BAS = ['basic','bas','basicv2','cbm'];
+        if (ASM.indexOf(l0) >= 0) {
           return '<pre class="lang-asm"><code class="lang-asm">' +
             highlightAsm(text) + '</code></pre>';
         }
-        if (l0 === 'basic') {
+        if (BAS.indexOf(l0) >= 0) {
           return '<pre class="lang-basic"><code class="lang-basic">' +
             highlightBasic(text) + '</code></pre>';
         }

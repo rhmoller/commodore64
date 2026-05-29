@@ -102,7 +102,7 @@ Notes:
 
 ### KickAssembler example
 
-```kickasm
+```asm
         // Bank in: RAM under BASIC and KERNAL, keep I/O for VIC/SID/CIA.
         sei
         lda #$2f

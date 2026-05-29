@@ -280,7 +280,7 @@ So the conventional address is **`$C000` = 49152**. You have 4096 bytes there, w
 
 We want something visibly verifiable: set the border colour to black and return. The border colour register is `$D020` = 53280. In assembly:
 
-```
+```asm
         lda #$00        ; A = 0 (black)
         sta $d020       ; store A into border colour register ($D020 = 53280)
         rts             ; return to BASIC (SYS behaves like JSR)
