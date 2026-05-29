@@ -90,10 +90,10 @@ sequenceDiagram
     participant Main as Main code
     participant VIC as VIC-II
     participant IRQ as IRQ handler
-    Main->>Main: SEI; point $0314/5 at handler
+    Main->>Main: SEI, point $0314/5 at handler
     Main->>VIC: set IRQ line ($D012), enable raster IRQ ($D01A)
-    Main->>Main: CLI; loop forever
-    VIC-->>IRQ: raster reaches line → IRQ fires
+    Main->>Main: CLI, loop forever
+    VIC-->>IRQ: raster reaches line, IRQ fires
     IRQ->>VIC: do work (change colors / play music)
     IRQ->>VIC: ack ($D019), set next line
     IRQ-->>Main: RTI
