@@ -178,8 +178,8 @@ def main(argv=None):
     r = sub.add_parser("run", help="boot under warp, screenshot on exit, detect JAM")
     r.add_argument("input", help="a .prg or .asm")
     r.add_argument("--screenshot", help="PNG to save on exit")
-    r.add_argument("--cycles", type=int, default=20_000_000,
-                   help="run this many CPU cycles then quit (default 20M; must exceed autostart load time)")
+    r.add_argument("--cycles", type=int, default=40_000_000,
+                   help="run this many CPU cycles then quit (default 40M; must exceed autostart load time)")
     r.add_argument("--timeout", type=float, default=60.0)
 
     c = sub.add_parser("check", help="assert memory/register values via the binary monitor")
