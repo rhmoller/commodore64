@@ -5,6 +5,8 @@ web viewer, a BASIC build/run + live-reload workflow, and emulator tooling. Focu
 **demoscene & game development**, covering the classic C64 and the new
 **C64 Ultimate**, in both assembly (KickAssembler) and BASIC V2.
 
+**📖 Read it online: <https://rhmoller.github.io/commodore64/>**
+
 ## Layout
 
 | Path | What |
