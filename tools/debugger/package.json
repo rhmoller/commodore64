@@ -1,0 +1,16 @@
+{
+  "name": "vice-web-debugger",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser GUI debugger relay for VICE — WebSocket ⇄ binary monitor. Node + TypeScript, zero runtime dependencies.",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}

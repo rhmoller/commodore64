@@ -1,12 +1,14 @@
 # VICE Web Debugger
 
 A browser-based GUI debugger for the [VICE](https://vice-emu.sourceforge.io/)
-C64 emulator. A small pure-stdlib Python server relays JSON over a WebSocket to
+C64 emulator. A small Node.js + TypeScript server relays JSON over a WebSocket to
 VICE's **binary monitor** (the binary remote-monitor protocol on TCP), so you get
-a live, scriptable debugger with no build step and no dependencies.
+a live, scriptable debugger. Zero runtime dependencies — Node built-ins only —
+and no build step: the server runs straight from TypeScript via Node's
+type-stripping (Node ≥ 22.6).
 
 ```
-browser  ⇄  WebSocket (JSON)  ⇄  server.py  ⇄  TCP (binary)  ⇄  x64sc -binarymonitor
+browser  ⇄  WebSocket (JSON)  ⇄  server.ts (node)  ⇄  TCP (binary)  ⇄  x64sc -binarymonitor
 ```
 
 ![screenshot](screenshot.png)
@@ -45,13 +47,21 @@ browser  ⇄  WebSocket (JSON)  ⇄  server.py  ⇄  TCP (binary)  ⇄  x64sc -b
    xvfb-run -a x64sc -binarymonitor -binarymonitoraddress ip4://127.0.0.1:6502 -autostart yourprog.prg
    ```
 
-2. Start the relay server:
+2. Start the relay server (Node ≥ 22.6, no install needed):
 
    ```sh
-   python3 tools/debugger/server.py [http_port=8080] [vice_port=6502] [vice_host=127.0.0.1]
+   node tools/debugger/src/server.ts [http_port=8080] [vice_port=6502] [vice_host=127.0.0.1]
+   # or, from this directory:  npm start
    ```
 
 3. Open <http://localhost:8080/>.
+
+Type-checking is optional and the only thing that needs `npm install`
+(TypeScript + `@types/node`, both dev-only):
+
+```sh
+cd tools/debugger && npm install && npm run typecheck
+```
 
 VICE accepts a single binary-monitor connection at a time, so run one server per
 emulator instance. If VICE is restarted, restart the server to reconnect.
@@ -60,7 +70,8 @@ emulator instance. If VICE is restarted, restart the server to reconnect.
 
 | File | Purpose |
 |------|---------|
-| `server.py` | HTTP + WebSocket server and the VICE binary-monitor bridge. |
+| `src/server.ts` | HTTP + WebSocket server and the VICE binary-monitor bridge. |
+| `package.json` / `tsconfig.json` | npm scripts and (optional) type-check config. |
 | `web/index.html` | Panel layout. |
 | `web/app.js` | Front end: WebSocket RPC, panels, visual renderers. |
 | `web/disasm.js` | 6502/6510 disassembler (data table + linear decoder). |

@@ -17,6 +17,9 @@ docs/reference/*.pdf
 .botface/
 __pycache__/
 *.pyc
+# Node (debugger dev deps for type-checking only; runtime needs none)
+node_modules/
+*.tsbuildinfo
 # capstone build agents may drop a temp source at the repo root; the canonical
 # listing lives in the docs page.
 /tmp_*.asm
