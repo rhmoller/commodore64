@@ -94,10 +94,10 @@ main:
         sta $d021                   // background = black
 
 splitLine:
-        .const TOP = 120            // raster line where the split happens
+        .const TOP = 156            // raster line where the split happens (PAL centre: 312/2)
 
 loop:
-        // --- wait until the beam reaches the TOP line ---
+        // --- wait until the beam reaches the TOP line, then go red below it ---
 wait1:  lda $d012                   // read current raster line (low 8 bits)
         cmp #TOP                    // reached our target?
         bne wait1                   // no -> keep polling
@@ -105,10 +105,14 @@ wait1:  lda $d012                   // read current raster line (low 8 bits)
         lda #$02                    // 2 = red (Appendix C palette)
         sta $d020                   // border red from line TOP downward
 
-        // --- wait until the beam passes the bottom of the screen ---
-wait2:  lda $d012
-        cmp #$ff                    // near end of the visible raster
-        bne wait2
+        // --- restore blue only once the beam is past the BOTTOM border and has
+        //     wrapped back to the top, so the bottom border stays red. $D012 alone
+        //     can't see lines >= 256 (it would match #TOP twice per frame); RST8 =
+        //     $D011 bit 7 is the 9th raster bit, so we watch it instead. ---
+wait2:  lda $d011                   // bit 7 (RST8) = raster line bit 8
+        bpl wait2                   // spin until line >= 256 (below the screen)
+wait3:  lda $d011
+        bmi wait3                   // spin until RST8 clears -> beam wrapped to top
 
         lda #$06                    // 6 = blue
         sta $d020                   // border blue for the top part
@@ -116,10 +120,10 @@ wait2:  lda $d012
         jmp loop                    // do it again every frame
 ```
 
-![The screen interior is black, and the border is split horizontally — the upper part of the border is blue, and from roug](img/part-2-interrupts-01.png)
+![The screen interior is black, and the border is split horizontally — the upper part of the border is blue, and from the vertical middle (the PAL centre) downward the border is red, including the bottom border.](img/part-2-interrupts-01.png)
 
 
-What you should see: the screen interior is black, and the **border is split horizontally** — the upper part of the border is blue, and from roughly the vertical middle (raster line 120) downward the border is red. The split holds steady and does not flicker.
+What you should see: the screen interior is black, and the **border is split horizontally** — the upper part of the border is blue, and from the vertical middle (raster line 156, the PAL centre) downward the border is red. The split holds steady and does not flicker.
 
 ### Storing the raster value
 
