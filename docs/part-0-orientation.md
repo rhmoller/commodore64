@@ -189,6 +189,7 @@ done:
         rts                   // return to BASIC
 
 message:
+        .encoding "petscii_mixed" // .text defaults to SCREEN CODES; CHROUT wants PETSCII
         .text "hello c64"
         .byte $0d, $00        // $0d = carriage return, $00 = terminator
 ```
@@ -198,7 +199,7 @@ Notes on the syntax:
 - `:BasicUpstart2(start)` is a macro call — the leading `:` is how KickAssembler invokes macros.
 - Colour registers use only the low nibble (0-15); the high nibble reads back as 1s, so don't rely on it. See [Appendix C](appendix-c-vic-registers.md).
 - `CHROUT` ($FFD2) prints the PETSCII char in `A` and interprets control codes such as `$0D` (carriage return). Per [Appendix F](appendix-f-kernal-basic.md).
-- `.text "hello c64"` emits PETSCII bytes (which is what `CHROUT` expects) — distinct from screen codes you'd POKE directly into screen RAM.
+- `.text` defaults to **screen codes** in KickAssembler, but `CHROUT` expects **PETSCII** — so `.encoding "petscii_mixed"` precedes the `.text` to switch encodings. Screen codes are what you'd POKE directly into screen RAM; feeding them to `CHROUT` prints garbage (the letters land on invisible PETSCII control codes).
 
 Assemble and run:
 

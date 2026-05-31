@@ -20,10 +20,16 @@
 import net from "node:net";
 import http from "node:http";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import path from "node:path";
 
-const WEBROOT = path.resolve(import.meta.dirname, "..", "web");
+const WEBROOT = path.resolve(import.meta.dirname, "..", "web");        // built UI
+const LEGACYROOT = path.resolve(import.meta.dirname, "..", "legacy");  // old debugger
+const KICKASS = path.resolve(import.meta.dirname, "..", "..", "kickass");
+// Files the IDE may open/save/build are confined to this root (default: the
+// c64-tools repo root, three levels up from src/). Override via argv.
+let WORKSPACE = path.resolve(import.meta.dirname, "..", "..", "..");
 
 // ---- binary monitor protocol ------------------------------------------------
 const STX = 0x02;
@@ -288,6 +294,18 @@ class ViceBridge {
   reset(hard = false): Promise<CmdResult> { return this.command(C.RESET, Buffer.from([hard ? 1 : 0])); }
   ping(): Promise<CmdResult> { return this.command(C.PING); }
 
+  /** Load a .prg into the running emulator and (optionally) RUN it.
+   *  body: u8 run, u16 file-index(0), u8 namelen, name[namelen] */
+  autostart(filePath: string, run = true): Promise<CmdResult> {
+    const fn = Buffer.from(filePath, "utf8");
+    if (fn.length > 255) return Promise.reject(new Error("path too long"));
+    const head = Buffer.alloc(4);
+    head[0] = run ? 1 : 0;
+    head.writeUInt16LE(0, 1);
+    head[3] = fn.length;
+    return this.command(C.AUTOSTART, Buffer.concat([head, fn]), 15000);
+  }
+
   /** Resume and resolve once the emulator next stops (checkpoint hit / jam). */
   runUntilStop(timeoutMs = 4000): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
@@ -442,6 +460,44 @@ function handleWs(socket: net.Socket, head: Buffer): void {
   socket.on("error", cleanup);
 }
 
+// ---- file + build API (IDE) -------------------------------------------------
+/** Resolve `rel` under `root`, or null if it would escape the root. */
+function safeResolve(root: string, rel: string): string | null {
+  const full = path.resolve(root, rel);
+  if (full !== root && !full.startsWith(root + path.sep)) return null;
+  return full;
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (c) => { data += c; if (data.length > 8e6) req.destroy(); });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
+/** Map a source file to the build command that produces its .prg. */
+function buildPlan(srcAbs: string): { cmd: string; args: string[]; prg: string } | { error: string } {
+  const ext = path.extname(srcAbs).toLowerCase();
+  const prg = srcAbs.slice(0, srcAbs.length - ext.length) + ".prg";
+  if (ext === ".bas") return { cmd: "petcat", args: ["-w2", "-o", prg, "--", srcAbs], prg };
+  if (ext === ".asm" || ext === ".s" || ext === ".a" || ext === ".kick")
+    return { cmd: KICKASS, args: [srcAbs, "-o", prg], prg };
+  return { error: `don't know how to build ${ext || "extensionless"} files` };
+}
+
+function spawnBuild(cmd: string, args: string[]): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    let out = "";
+    const child = spawn(cmd, args);
+    child.stdout.on("data", (d) => { out += d; });
+    child.stderr.on("data", (d) => { out += d; });
+    child.on("error", (e) => resolve({ code: -1, output: out + `\n${cmd}: ${e.message}` }));
+    child.on("close", (code) => resolve({ code: code ?? -1, output: out }));
+  });
+}
+
 // ---- HTTP (static web app) + WS upgrade -------------------------------------
 const CTYPE: Record<string, string> = {
   ".html": "text/html", ".js": "application/javascript",
@@ -449,10 +505,67 @@ const CTYPE: Record<string, string> = {
 };
 
 const server = http.createServer(async (req, res) => {
-  let p = (req.url ?? "/").split("?")[0];
-  if (p === "/") p = "/index.html";
-  const full = path.normalize(path.join(WEBROOT, p));
-  if (!full.startsWith(WEBROOT)) { res.writeHead(404); res.end(); return; }
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const p = url.pathname;
+  const sendJson = (status: number, obj: unknown) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(obj));
+  };
+
+  // -- file read / write (confined to WORKSPACE) --
+  if (p === "/api/file") {
+    try {
+      if (req.method === "GET") {
+        const full = safeResolve(WORKSPACE, url.searchParams.get("path") ?? "");
+        if (!full) return sendJson(400, { error: "path escapes workspace" });
+        const content = await readFile(full, "utf8");
+        return sendJson(200, { path: path.relative(WORKSPACE, full), content });
+      }
+      if (req.method === "PUT") {
+        const body = JSON.parse(await readBody(req)) as { path?: string; content?: string };
+        const full = safeResolve(WORKSPACE, body.path ?? "");
+        if (!full) return sendJson(400, { error: "path escapes workspace" });
+        await mkdir(path.dirname(full), { recursive: true });
+        await writeFile(full, String(body.content ?? ""));
+        return sendJson(200, { ok: true });
+      }
+      return sendJson(405, { error: "method not allowed" });
+    } catch (e) {
+      return sendJson(500, { error: (e as Error).message });
+    }
+  }
+
+  // -- build the file and inject it into the running emulator --
+  if (p === "/api/run" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readBody(req)) as { path?: string };
+      const full = safeResolve(WORKSPACE, body.path ?? "");
+      if (!full) return sendJson(400, { error: "path escapes workspace" });
+      const plan = buildPlan(full);
+      if ("error" in plan) return sendJson(200, { ok: false, output: "", error: plan.error });
+      const { code, output } = await spawnBuild(plan.cmd, plan.args);
+      if (code !== 0) return sendJson(200, { ok: false, output, error: `build exited ${code}` });
+      if (!BR.connected) return sendJson(200, { ok: false, output, error: "VICE not connected" });
+      try {
+        const r = await BR.autostart(plan.prg);
+        if (r.err) return sendJson(200, { ok: false, output, error: `autostart err 0x${r.err.toString(16)}` });
+      } catch (e) {
+        return sendJson(200, { ok: false, output, error: (e as Error).message });
+      }
+      return sendJson(200, { ok: true, output, prg: path.relative(WORKSPACE, plan.prg) });
+    } catch (e) {
+      return sendJson(500, { error: (e as Error).message });
+    }
+  }
+
+  // -- static files: /legacy/* -> old debugger, everything else -> built UI --
+  if (p === "/legacy") { res.writeHead(302, { Location: "/legacy/" }); res.end(); return; }
+  let root = WEBROOT;
+  let rel = p;
+  if (p.startsWith("/legacy/")) { root = LEGACYROOT; rel = p.slice("/legacy".length); }
+  if (rel === "/" || rel === "") rel = "/index.html";
+  const full = path.normalize(path.join(root, rel));
+  if (!full.startsWith(root)) { res.writeHead(404); res.end(); return; }
   try {
     const data = await readFile(full);
     const ctype = CTYPE[path.extname(full)] ?? "application/octet-stream";
@@ -483,6 +596,8 @@ async function main(): Promise<void> {
   const httpPort = Number(process.argv[2] ?? 8080);
   const vicePort = Number(process.argv[3] ?? 6502);
   const viceHost = process.argv[4] ?? "127.0.0.1";
+  if (process.argv[5]) WORKSPACE = path.resolve(process.argv[5]);
+  console.log(`workspace root: ${WORKSPACE}`);
   console.log(`connecting to VICE binary monitor at ${viceHost}:${vicePort} ...`);
   try {
     await BR.connect(viceHost, vicePort, 8000);

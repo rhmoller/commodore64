@@ -55,7 +55,7 @@ flowchart TD
 
 | Page | What |
 |------|------|
-| [Appendix A](appendix-a-opcodes.md)–[I](appendix-i-glossary.md) | opcodes · memory map · VIC-II / SID / CIA registers · KERNAL & BASIC · PETSCII · timing · glossary |
+| [Appendix A](appendix-a-opcodes.md)–[J](appendix-j-prg-format.md) | opcodes · memory map · VIC-II / SID / CIA registers · KERNAL & BASIC · PETSCII · timing · glossary · file & storage formats (PRG/D64/TAP) |
 | [C64 Ultimate](c64-ultimate.md) | the modern FPGA C64 — features, expansions, UCI & REST APIs |
 | [Resources & Further Reading](resources.md) | the annotated external link directory |
 

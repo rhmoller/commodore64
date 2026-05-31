@@ -3,8 +3,9 @@
 The **Commodore 64 Ultimate** ([commodore.net](https://commodore.net/computer/))
 is a brand-new, **officially Commodore-branded** C64 — the revived Commodore's
 **first official hardware in over 30 years**. It's a full FPGA re-creation of the
-C64 in a new case, and under the hood it **licenses/rebrands Gideon Zweijtzer's
-Ultimate 64 board**. That shared core is why everything in the demoscene/game
+C64 in a new case, and under the hood it is **built on Gideon Zweijtzer's
+Ultimate 64 (Elite-II) board** — Gideon is a Commodore launch partner and systems
+architect on the project. That shared core is why everything in the demoscene/game
 sections of this library runs on it, and why its developer interfaces are the
 same ones documented for the Ultimate-64 / Ultimate-II+.
 

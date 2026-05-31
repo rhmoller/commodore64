@@ -1,89 +1,120 @@
-# VICE Web Debugger
+# VICE C64 IDE + Web Debugger
 
-A browser-based GUI debugger for the [VICE](https://vice-emu.sourceforge.io/)
-C64 emulator. A small Node.js + TypeScript server relays JSON over a WebSocket to
-VICE's **binary monitor** (the binary remote-monitor protocol on TCP), so you get
-a live, scriptable debugger. Zero runtime dependencies — Node built-ins only —
-and no build step: the server runs straight from TypeScript via Node's
-type-stripping (Node ≥ 22.6).
+A browser-based **remote development IDE** for the C64, backed by the
+[VICE](https://vice-emu.sourceforge.io/) emulator. Source files live locally on
+your PC; you edit them in a CodeMirror editor with C64-BASIC and KickAssembler
+syntax highlighting, then **build & inject** them straight into a running VICE
+over its binary monitor — no manual `RUN`, no window juggling.
+
+It is the evolution of the original WebSocket⇄binary-monitor debugger, which is
+still here (now at `/legacy`) and will be folded into the new UI over time.
 
 ```
-browser  ⇄  WebSocket (JSON)  ⇄  server.ts (node)  ⇄  TCP (binary)  ⇄  x64sc -binarymonitor
+browser (React + CodeMirror)
+   │  HTTP  /api/file  /api/run        ┌─ petcat / KickAss → .prg
+   │  WS    /ws (debugger events)      │
+   ▼                                   ▼
+server.ts (Node, zero runtime deps) ── builds + autostarts ──► VICE -binarymonitor
 ```
 
-![screenshot](screenshot.png)
+## Architecture
 
-## Features
+| Piece | Stack |
+|-------|-------|
+| `src-ui/` | The IDE front end — **Vite + React + TypeScript + CodeMirror 6**. Built to `web/`. |
+| `src/server.ts` | HTTP + WebSocket server, VICE binary-monitor bridge, and the file/build API. **Node built-ins only — no runtime dependencies.** |
+| `legacy/` | The original vanilla-JS debugger (disassembly, memory, sprites, …), served at `/legacy`. |
 
-- **Execution control** — run, stop, single-step, step-over, step-out,
-  step-one-frame (breaks at the active IRQ handler), and soft reset.
-- **Registers** — live PC / A / X / Y / SP / SP-stack / processor flags, plus
-  zero-page `$00`/`$01`. Click any value to poke a new one.
-- **Disassembly** — a full 6502/6510 disassembler in JS (all 256 opcodes incl.
-  illegals). The current PC is highlighted; click a line to toggle an exec
-  breakpoint; type an address to jump.
-- **Memory** — hex + ASCII view; click a cell to poke a byte; jump to any address.
-- **Breakpoints / watchpoints** — exec / load / store checkpoints with live hit
-  events streamed back to the UI.
-- **Live visual panels** — render straight from emulator memory:
-  - **Sprites** — all 8, hi-res or multicolour, with per-sprite colours/enable.
-  - **Charset** — the active character generator (RAM, or the embedded chargen
-    ROM when the char base points at a ROM image window).
-  - **Screen** — text (std / multicolour / ECM) and bitmap (hi-res / multicolour)
-    modes, decoded from screen RAM, colour RAM and the char/bitmap base.
-- **Event log** — stopped / resumed / checkpoint / JAM events as they happen.
+The build step and all the new dependencies (React, Vite, CodeMirror) are
+**dev-only**. The running server still ships zero runtime dependencies: it just
+serves the static `web/` bundle and bridges the monitor socket.
 
-## Running
+> **Single connection:** VICE accepts only one binary-monitor client at a time,
+> and the server holds it. Build & inject therefore goes *through* the server's
+> in-process bridge — don't also run `tools/vice_reload.py` against the same
+> emulator while the server is up.
 
-1. Start VICE with the binary monitor enabled and load your program:
+## Quick start
+
+1. Install dev dependencies (first time only):
 
    ```sh
-   x64sc -binarymonitor -binarymonitoraddress ip4://127.0.0.1:6502 -autostart yourprog.prg
+   cd tools/debugger && npm install
    ```
 
-   Headless (no X server) works too:
+2. Start VICE with the binary monitor enabled:
 
    ```sh
-   xvfb-run -a x64sc -binarymonitor -binarymonitoraddress ip4://127.0.0.1:6502 -autostart yourprog.prg
+   x64sc -binarymonitor -binarymonitoraddress ip4://127.0.0.1:6502
+   # headless: xvfb-run -a x64sc -binarymonitor -binarymonitoraddress ip4://127.0.0.1:6502
    ```
 
-2. Start the relay server (Node ≥ 22.6, no install needed):
+3. Build the UI and run the server:
 
    ```sh
-   node tools/debugger/src/server.ts [http_port=8080] [vice_port=6502] [vice_host=127.0.0.1]
-   # or, from this directory:  npm start
+   npm run build      # bundles src-ui/ -> web/
+   npm run server     # http://localhost:8080/
    ```
 
-3. Open <http://localhost:8080/>.
+   The server takes optional args: `node src/server.ts [http_port] [vice_port] [vice_host] [workspace_root]`.
+   The **workspace root** (default: the `c64-tools` repo root) confines which
+   files the IDE may open, save and build.
 
-Type-checking is optional and the only thing that needs `npm install`
-(TypeScript + `@types/node`, both dev-only):
+4. Open <http://localhost:8080/>, type a path (e.g. `useit/hello.asm` or
+   `basic/hello.bas`), edit, and hit **▶ build & run** (or `Ctrl/Cmd-Enter`).
+   `Ctrl/Cmd-S` saves.
+
+## Development (with HMR)
+
+For live front-end editing, run the Node server and the Vite dev server together
+— Vite proxies `/api` and `/ws` to the Node server:
 
 ```sh
-cd tools/debugger && npm install && npm run typecheck
+npm run dev        # server (:8080) + vite (:5173) via concurrently
+# then open http://localhost:5173/
 ```
 
-VICE accepts a single binary-monitor connection at a time, so run one server per
-emulator instance. If VICE is restarted, restart the server to reconnect.
+Type-check both halves:
+
+```sh
+npm run typecheck  # server tsconfig + src-ui tsconfig
+```
+
+## Build & inject
+
+`▶ build & run` POSTs the open file's path to `/api/run`. The server:
+
+1. Picks a builder from the extension — `.bas` → `petcat -w2`, and
+   `.asm`/`.s`/`.a`/`.kick` → KickAssembler (`tools/kickass`).
+2. Runs it, streaming stdout/stderr to the **build console**.
+3. On success, autostarts the resulting `.prg` into the running emulator over
+   the binary monitor (load + `RUN`).
+
+KickAss sources should be autostartable — i.e. carry a BASIC stub via
+`:BasicUpstart2(addr)` — so the autostart-with-RUN reaches your entry point.
 
 ## Files
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
-| `src/server.ts` | HTTP + WebSocket server and the VICE binary-monitor bridge. |
-| `package.json` / `tsconfig.json` | npm scripts and (optional) type-check config. |
-| `web/index.html` | Panel layout. |
-| `web/app.js` | Front end: WebSocket RPC, panels, visual renderers. |
-| `web/disasm.js` | 6502/6510 disassembler (data table + linear decoder). |
-| `web/charrom.js` | Embedded C64 chargen ROM, for ROM-window charset/screen views. |
-| `web/style.css` | Dense IDE theme. |
+| `src-ui/index.html`, `src/main.tsx`, `src/App.tsx` | UI entry + IDE shell (toolbar, editor, build console). |
+| `src-ui/src/components/CodeView.tsx` | CodeMirror 6 React editor (dirty-state, Ctrl-S save). |
+| `src-ui/src/langs/kickass.ts`, `c64basic.ts` | CodeMirror stream languages for KickAss 6502 and BASIC V2. |
+| `src-ui/src/api.ts` | HTTP client for `/api/file` and `/api/run`. |
+| `src/server.ts` | HTTP + WS server, binary-monitor bridge, file/build API. |
+| `legacy/` | Original vanilla-JS debugger (served at `/legacy`). |
+
+## Status / roadmap
+
+v1 covers the core loop: **open → edit (highlight) → save → build → inject**.
+Planned next: a file-browser tree, a diff viewer, and migrating the legacy
+debugger panels (disassembly, registers, memory, sprites/charset/screen) into
+the React UI so editing and live debugging share one surface.
 
 ## Notes / limitations
 
-- The visual panels read live RAM via the monitor. For the standard character
-  set (char base in a ROM image window) the VIC fetches the chargen ROM, which a
-  RAM read can't see — the embedded `charrom.js` is substituted there and the
-  panel notes "chargen ROM view".
-- Sprite/screen rendering reflects the current VIC register state at the moment
-  of the read; it is not a cycle-exact frame (no raster splits / mid-frame
-  register changes).
+- Only `.bas` and KickAss sources have a build path today; other extensions
+  report "don't know how to build …".
+- The legacy debugger's visual panels read live RAM via the monitor and reflect
+  current VIC register state at read time (not a cycle-exact frame). See the
+  notes in `legacy/`.

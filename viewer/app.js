@@ -459,6 +459,7 @@
       render(md);
       buildPager(index);
       renderMermaid().then(function () {
+        markZoomable();   // diagrams/screenshots become click-to-zoom
         // jump to top of content after everything is laid out
         window.scrollTo(0, 0);
         var main = document.querySelector(".content");
@@ -540,6 +541,182 @@
     e.preventDefault();
     var el = document.getElementById(a.getAttribute("data-anchor"));
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // ---- diagram lightbox: click any diagram/screenshot to zoom & pan ----
+  // Mermaid diagrams and emulator screenshots are often hard to read at their
+  // embedded size. Clicking one opens a full-screen overlay with wheel-zoom
+  // (centred on the cursor), drag-to-pan, toolbar buttons and keyboard control.
+  var lb = null, lbStage = null;
+  var lbState = { scale: 1, tx: 0, ty: 0, fit: 1, min: 0.2, max: 12, baseW: 0, baseH: 0 };
+
+  function applyLbTransform() {
+    lbStage.style.transform =
+      "translate(" + lbState.tx + "px," + lbState.ty + "px) scale(" + lbState.scale + ")";
+  }
+
+  // Zoom by `factor` while keeping the document point under (cx,cy) fixed.
+  function zoomAt(cx, cy, factor) {
+    var s = lbState.scale;
+    var ns = Math.max(lbState.min, Math.min(lbState.max, s * factor));
+    if (ns === s) return;
+    lbState.tx = cx - (cx - lbState.tx) * (ns / s);
+    lbState.ty = cy - (cy - lbState.ty) * (ns / s);
+    lbState.scale = ns;
+    applyLbTransform();
+  }
+
+  // Scale the content to fit the viewport and centre it; (re)sets zoom limits.
+  function fitLightbox() {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var fit = Math.min((vw * 0.92) / lbState.baseW, (vh * 0.82) / lbState.baseH);
+    if (!isFinite(fit) || fit <= 0) fit = 1;
+    lbState.fit = fit;
+    lbState.scale = fit;
+    lbState.min = fit * 0.5;
+    lbState.max = fit * 16;
+    lbState.tx = (vw - lbState.baseW * fit) / 2;
+    lbState.ty = (vh - lbState.baseH * fit) / 2;
+    applyLbTransform();
+  }
+
+  function buildLightbox() {
+    if (lb) return;
+    lb = document.createElement("div");
+    lb.className = "lightbox";
+    lb.setAttribute("aria-hidden", "true");
+    lb.innerHTML =
+      '<div class="lb-backdrop"></div>' +
+      '<div class="lb-stage"></div>' +
+      '<div class="lb-toolbar">' +
+        '<button class="lb-btn" data-act="out"   title="Zoom out (−)">−</button>' +
+        '<button class="lb-btn" data-act="reset" title="Fit to screen (0)">↺</button>' +
+        '<button class="lb-btn" data-act="in"    title="Zoom in (+)">+</button>' +
+        '<button class="lb-btn lb-close" data-act="close" title="Close (Esc)">✕</button>' +
+      '</div>' +
+      '<div class="lb-hint">scroll = zoom · drag = pan · esc = close</div>';
+    document.body.appendChild(lb);
+    lbStage = lb.querySelector(".lb-stage");
+
+    lb.querySelector(".lb-toolbar").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      var act = b.getAttribute("data-act");
+      if (act === "close") return closeLightbox();
+      if (act === "reset") return fitLightbox();
+      zoomAt(window.innerWidth / 2, window.innerHeight / 2, act === "in" ? 1.3 : 1 / 1.3);
+    });
+
+    lb.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    }, { passive: false });
+
+    // pan from anywhere on the overlay; a clean (un-dragged) click on the
+    // backdrop closes it.
+    var dragging = false, moved = false, lastX = 0, lastY = 0, downTarget = null;
+    lb.addEventListener("pointerdown", function (e) {
+      if (e.target.closest(".lb-toolbar")) return;     // let buttons work
+      dragging = true; moved = false; downTarget = e.target;
+      lastX = e.clientX; lastY = e.clientY;
+      try { lb.setPointerCapture(e.pointerId); } catch (_) {}
+      lb.classList.add("dragging");
+    });
+    lb.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      var dx = e.clientX - lastX, dy = e.clientY - lastY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      lbState.tx += dx; lbState.ty += dy;
+      lastX = e.clientX; lastY = e.clientY;
+      applyLbTransform();
+    });
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false; lb.classList.remove("dragging");
+      try { lb.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (!moved && downTarget && downTarget.classList.contains("lb-backdrop")) closeLightbox();
+    }
+    lb.addEventListener("pointerup", endDrag);
+    lb.addEventListener("pointercancel", endDrag);
+
+    lb.addEventListener("dblclick", function (e) {
+      if (e.target.closest(".lb-toolbar")) return;
+      if (lbState.scale > lbState.fit * 1.4) fitLightbox();
+      else zoomAt(e.clientX, e.clientY, 2);
+    });
+  }
+
+  function openLightbox(fig) {
+    buildLightbox();
+    lbStage.innerHTML = "";
+    var content;
+    if (fig.tagName.toLowerCase() === "img") {
+      var r = fig.getBoundingClientRect();
+      lbState.baseW = fig.naturalWidth || r.width || 480;
+      lbState.baseH = fig.naturalHeight || r.height || 360;
+      content = document.createElement("img");
+      content.className = "lb-img";
+      content.src = fig.currentSrc || fig.src;
+      content.alt = fig.alt || "";
+    } else {
+      var svg = fig.tagName.toLowerCase() === "svg" ? fig : fig.querySelector("svg");
+      if (!svg) return;
+      var w, h, vb = svg.viewBox && svg.viewBox.baseVal;
+      if (vb && vb.width) { w = vb.width; h = vb.height; }
+      else { var br = svg.getBoundingClientRect(); w = br.width; h = br.height; }
+      lbState.baseW = w; lbState.baseH = h;
+      content = svg.cloneNode(true);
+      content.classList.add("lb-svg");   // keep mermaid's own classes (inline styling)
+      content.removeAttribute("width");
+      content.removeAttribute("height");
+      content.style.maxWidth = "none";
+    }
+    content.style.width = lbState.baseW + "px";
+    content.style.height = lbState.baseH + "px";
+    lbStage.appendChild(content);
+    lb.classList.add("open");
+    lb.setAttribute("aria-hidden", "false");
+    document.body.classList.add("lb-active");
+    fitLightbox();
+  }
+
+  function closeLightbox() {
+    if (!lb) return;
+    lb.classList.remove("open");
+    lb.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("lb-active");
+    lbStage.innerHTML = "";
+  }
+
+  // Flag diagrams/screenshots as zoomable once they're in the DOM (mermaid SVGs
+  // only after they've rendered). Called after each mermaid run.
+  function markZoomable() {
+    $doc.querySelectorAll("img").forEach(function (img) {
+      img.classList.add("zoomable");
+      if (!img.title) img.title = "Click to zoom";
+    });
+    $doc.querySelectorAll(".mermaid").forEach(function (m) {
+      if (m.querySelector("svg")) { m.classList.add("zoomable"); m.title = "Click to zoom"; }
+    });
+  }
+
+  // Open the lightbox when a diagram/screenshot is clicked (links handled above).
+  $doc.addEventListener("click", function (e) {
+    if (e.target.closest("a")) return;
+    var fig = e.target.closest(".mermaid, img");
+    if (!fig) return;
+    if (fig.classList.contains("mermaid") && !fig.querySelector("svg")) return;
+    e.preventDefault();
+    openLightbox(fig);
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (!lb || !lb.classList.contains("open")) return;
+    if (e.key === "Escape") closeLightbox();
+    else if (e.key === "+" || e.key === "=") zoomAt(innerWidth / 2, innerHeight / 2, 1.3);
+    else if (e.key === "-" || e.key === "_") zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.3);
+    else if (e.key === "0") fitLightbox();
+    else return;
+    e.preventDefault();
   });
 
   // ---- boot ----

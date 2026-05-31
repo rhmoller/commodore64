@@ -30,13 +30,14 @@ flowchart LR
 
 | Tool | Notes |
 |------|-------|
-| **[KickAssembler](https://theweb.dk/KickAssembler/Main.html)** | *(primary, demoscene favorite)*. Java-based; a full scripting language inside the assembler (loops, functions, math, importing & converting graphics/SID at assemble time). Generates VICE debug symbols. The de-facto standard for modern C64 demos/games; best VS Code support. |
-| **[ACME](https://sourceforge.net/projects/acme-crossass/)** | *(primary)*. Lightweight, fast, cross-platform, used heavily on Codebase64 (most example code is ACME or KickAss). Great first assembler. |
-| **[64tass](https://sourceforge.net/projects/tass64/)** | *(primary)*. Turbo-Assembler-compatible syntax, very capable macros/segments; popular for larger projects. |
-| **[ca65 (part of cc65)](https://cc65.github.io/doc/ca65.html)** | *(primary)*. The assembler in the cc65 suite; powerful macro/linker model (`ld65`), good if you mix C and asm. |
+| **[KickAssembler](https://theweb.dk/KickAssembler/Main.html)** | *(primary — used for every example in this curriculum)*. Java-based; a full scripting language inside the assembler (loops, functions, math, importing & converting graphics/SID at assemble time). Generates VICE debug symbols. The de-facto standard for modern C64 demos/games; best VS Code support. |
+| **[ACME](https://sourceforge.net/projects/acme-crossass/)** | Lightweight, fast, cross-platform, used heavily on Codebase64 (much older example code is ACME). Different directive syntax (`!byte`, `!scr`, …) — handy to *read* Codebase64 listings, but this curriculum standardizes on KickAss. |
+| **[64tass](https://sourceforge.net/projects/tass64/)** | Turbo-Assembler-compatible syntax, very capable macros/segments; popular for larger projects. |
+| **[ca65 (part of cc65)](https://cc65.github.io/doc/ca65.html)** | The assembler in the cc65 suite; powerful macro/linker model (`ld65`), good if you mix C and asm. |
 
-If you're starting fresh and want the demoscene mainstream: **KickAssembler**.
-If you want minimal and match Codebase64 examples: **ACME**.
+This curriculum uses **KickAssembler** for all assembly examples — install it
+first. The others are listed so you can recognize their syntax when reading code
+from elsewhere; the demoscene mainstream is KickAss.
 
 ## C compilers
 

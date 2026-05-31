@@ -9,7 +9,7 @@ an emulator.
 
 ```mermaid
 flowchart LR
-    W["Write .asm"] --> A["Assemble<br/>(KickAssembler / ACME)"]
+    W["Write .asm"] --> A["Assemble<br/>(KickAssembler)"]
     A --> P[".prg"]
     P --> E["Run in VICE (x64sc)"]
     E --> D["Debug<br/>(VICE monitor / Retro Debugger)"]
@@ -22,7 +22,7 @@ flowchart LR
 | Need | Pick | Get it |
 |------|------|--------|
 | Emulator | **VICE** (use `x64sc` for accuracy) | https://vice-emu.sourceforge.io/ |
-| Assembler | **KickAssembler** (Java) or **ACME** | https://theweb.dk/KickAssembler/Main.html · https://sourceforge.net/projects/acme-crossass/ |
+| Assembler | **KickAssembler** (Java) — used throughout this curriculum | https://theweb.dk/KickAssembler/Main.html |
 | Editor | VS Code + a KickAss/C64 extension | marketplace |
 
 (Full tool rundown and alternatives — cc65/llvm-mos/oscar64, debuggers, graphics
@@ -30,55 +30,50 @@ and music tools — are in [Toolchain](toolchain.md).)
 
 ## 2. Your first program
 
-A classic: change the border/background colors and print a message. **ACME**
-syntax (smallest to get running):
+A classic: change the border/background colors and print a message. All examples
+in this curriculum use **KickAssembler** (`//` comments, `*=` segments, built-in
+macros) so the syntax is consistent from here on:
 
 ```asm
-; hello.asm  —  assemble:  acme -f cbm -o hello.prg hello.asm
-        * = $0801                 ; BASIC start address (PRG load addr)
+// hello.asm  —  assemble:  java -jar KickAss.jar hello.asm
+        BasicUpstart2(start)      // emits a "10 SYS <start>" stub at $0801
 
-        ; --- a one-line BASIC stub: "10 SYS 2064" ---
-        !byte $0c,$08,$0a,$00,$9e,$32,$30,$36,$34,$00,$00,$00
-
-        * = $0810                 ; 2064 — where SYS jumps
 start:  lda #$00
-        sta $d020                 ; border  -> black
-        sta $d021                 ; background -> black
+        sta $d020                 // border     -> black
+        sta $d021                 // background  -> black
 
         ldx #$00
 loop:   lda message,x
         beq done
-        jsr $ffd2                 ; KERNAL CHROUT: print char in A
+        jsr $ffd2                 // KERNAL CHROUT: print char in A
         inx
         bne loop
 done:   rts
 
-message: !scr "hello c64",13,0    ; !scr = screen codes; 13 = newline
+         .encoding "petscii_mixed" // .text defaults to SCREEN CODES; CHROUT wants PETSCII
+message: .text "hello c64"
+         .byte 13, 0              // 13 = carriage return, 0 = terminator
 ```
 
 Build and run:
 
 ```sh
-acme -f cbm -o hello.prg hello.asm
+java -jar KickAss.jar hello.asm   # produces hello.prg
 x64sc hello.prg
 ```
 
-> Why the BASIC stub? A `.prg` loads at the address in its first two bytes
-> (`$0801` = start of BASIC). The 12 bytes encode `10 SYS 2064`, so when the C64
-> autostarts/`RUN`s it, BASIC hands control to your machine code at `$0810`
-> (2064). This is the standard way every C64 program launches.
+> Why the stub? A `.prg` loads at the address in its first two bytes
+> (`$0801` = start of BASIC). `BasicUpstart2(start)` emits a one-line BASIC
+> program — `10 SYS <addr>` — so when the C64 autostarts/`RUN`s it, BASIC hands
+> control to your machine code. This is the standard way every C64 program
+> launches, and KickAss assembles the stub for you instead of hand-poking bytes.
+> The `.prg` layout itself — that 2-byte load address and what follows — is
+> dissected in [Appendix J](appendix-j-prg-format.md).
 
-With **KickAssembler** the same idea, but it has a built-in `BasicUpstart2` macro
-so you don't hand-assemble the stub:
-
-```asm
-        :BasicUpstart2(start)     // emits the SYS stub automatically
-        * = $0810
-start:  lda #$00
-        sta $d020
-        sta $d021
-        rts
-```
+KickAssembler is far more than an assembler — it has a full scripting language
+inside it (loops, functions, math, importing & converting graphics/SID at
+assemble time) and emits VICE debug symbols. That power is why it's the
+demoscene standard; the later parts lean on it heavily.
 
 ## 3. Add a raster interrupt (the gateway to everything)
 

@@ -1,0 +1,73 @@
+/* C64 IDE theme — Catppuccin Mocha (shared with the legacy debugger palette). */
+:root {
+  --bg: #1e1e2e; --panel: #181825; --head: #313244; --line: #45475a;
+  --fg: #cdd6f4; --dim: #7f849c; --accent: #89b4fa; --accent2: #cba6f7;
+  --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8;
+  --crust: #11111b; --surface0: #313244; --surface1: #45475a;
+  --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--mono); font-size: 12px;
+}
+
+.ide { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* top bar */
+.bar {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--head); border-bottom: 1px solid var(--line);
+  padding: 5px 8px; flex: 0 0 auto;
+}
+.brand { font-weight: 700; letter-spacing: 1px; color: var(--accent); }
+.bar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.bar .grow { flex: 1 1 auto; }
+.curfile { color: var(--dim); }
+.pathinput {
+  font-family: var(--mono); font-size: 11px; color: var(--fg);
+  background: var(--crust); border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 7px; width: 280px;
+}
+.pathinput::placeholder { color: var(--dim); }
+.pathinput:focus { outline: none; border-color: var(--accent); }
+.bar button, .bar .legacy {
+  font-family: var(--mono); font-size: 11px; color: var(--fg);
+  background: var(--surface0); border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 9px; cursor: pointer; text-decoration: none; line-height: 1.6;
+}
+.bar button:hover, .bar .legacy:hover { background: var(--surface1); }
+.bar button:disabled { opacity: .4; cursor: default; }
+.bar button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }
+.bar button.primary:hover:not(:disabled) { background: var(--accent2); border-color: var(--accent2); }
+.legacy { color: var(--dim); }
+
+/* editor */
+.editorwrap { flex: 1 1 auto; min-height: 0; position: relative; }
+.cm-host { position: absolute; inset: 0; }
+.cm-host .cm-editor { height: 100%; font-size: 13px; }
+.cm-host .cm-editor.cm-focused { outline: none; }
+.cm-host .cm-gutters { background: var(--panel); border-right: 1px solid var(--line); color: var(--dim); }
+.cm-host .cm-content { caret-color: var(--accent); }
+.empty { display: grid; place-items: center; height: 100%; color: var(--dim); }
+
+/* build console */
+.console {
+  flex: 0 0 28%; min-height: 90px; display: flex; flex-direction: column;
+  border-top: 1px solid var(--line); background: var(--panel);
+}
+.chead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 3px 8px; background: var(--head); border-bottom: 1px solid var(--line);
+  color: var(--dim); font-weight: 700;
+}
+.mini {
+  font: inherit; font-size: 10px; color: var(--dim);
+  background: var(--surface0); border: 1px solid var(--line); border-radius: 3px;
+  padding: 1px 6px; cursor: pointer;
+}
+.mini:hover { background: var(--surface1); color: var(--fg); }
+.cbody { flex: 1 1 auto; overflow: auto; padding: 4px 8px; }
+.cbody pre { margin: 0 0 2px; white-space: pre-wrap; word-break: break-word; color: var(--green); }
+.cbody pre.err { color: var(--red); }
