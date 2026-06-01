@@ -282,7 +282,7 @@ The NMI path is the same shape but uses $FFFA → KERNAL → `JMP ($0318)` (NMIN
 **Objectives**
 - Set up a raster interrupt: enable it in `$D01A`, choose the line via `$D012`/`$D011`, and acknowledge it in `$D019`.
 - Take over the IRQ vector cleanly by disabling the KERNAL's CIA timer interrupt.
-- Draw a multi-band screen split, then understand and eliminate the 0–7 cycle raster *jitter* with a double-IRQ stabiliser.
+- Draw a multi-band screen split, then understand and eliminate the raster-interrupt *jitter* with a double-IRQ stabiliser.
 
 ### Why raster interrupts?
 
@@ -326,6 +326,9 @@ BasicUpstart2(main)         // SYS 2064 stub -> jumps to main
 
 *=$0810
 main:
+        lda #$93            // PETSCII clear-screen code
+        jsr $ffd2           // KERNAL CHROUT: wipe the boot text -> blank screen
+
         sei                 // block IRQs while we set up
 
         lda #$7f
@@ -340,11 +343,12 @@ main:
         lda #$01
         sta $d01a           // enable raster compare IRQ (ERST)
 
-        lda #50
-        sta $d012           // first compare line = 50
+        lda #0
+        sta $d012           // first compare = line 0 (vertical blank: blue is set
+                            // before the first visible line, so no green creeps in)
         lda $d011
         and #$7f
-        sta $d011           // clear RST8 (line 50 < 256)
+        sta $d011           // clear RST8 (line 0 < 256)
 
         lda #$01
         sta $d019           // ack any stale raster flag
@@ -352,7 +356,7 @@ main:
         cli                 // interrupts on
 loop:   jmp loop            // main "program": idle forever
 
-// ---- IRQ at line 50: blue band starts ----
+// ---- IRQ at line 0 (vblank): blue band (top third) starts ----
 irq1:
         pha                 // save A, X, Y ourselves
         txa
@@ -364,8 +368,8 @@ irq1:
         sta $d020
         sta $d021
 
-        lda #130
-        sta $d012           // next split at line 130
+        lda #106
+        sta $d012           // next split at line 106 (one third down)
         lda #<irq2
         sta $0314
         lda #>irq2
@@ -375,7 +379,7 @@ irq1:
         sta $d019           // ACK raster IRQ (clears IRST)
         jmp exit
 
-// ---- IRQ at line 130: red band starts ----
+// ---- IRQ at line 106: red band (middle third) starts ----
 irq2:
         pha
         txa
@@ -387,8 +391,8 @@ irq2:
         sta $d020
         sta $d021
 
-        lda #210
-        sta $d012           // next split at line 210
+        lda #196
+        sta $d012           // next split at line 196 (two thirds down)
         lda #<irq3
         sta $0314
         lda #>irq3
@@ -398,7 +402,7 @@ irq2:
         sta $d019
         jmp exit
 
-// ---- IRQ at line 210: green band, then loop back to irq1 ----
+// ---- IRQ at line 196: green band (bottom third), then loop back to irq1 ----
 irq3:
         pha
         txa
@@ -410,8 +414,8 @@ irq3:
         sta $d020
         sta $d021
 
-        lda #50
-        sta $d012           // wrap: next frame's first split
+        lda #0
+        sta $d012           // wrap: blue at line 0 of the next frame (in vblank)
         lda #<irq1
         sta $0314
         lda #>irq1
@@ -430,127 +434,170 @@ exit:
         jmp $ea81           // KERNAL: RTI (we already restored registers)
 ```
 
-![Three-band raster split: blue, red and green horizontal bands.](img/part-2-interrupts-03.png)
+![Three-band raster split: blue, red and green horizontal bands on an otherwise blank screen.](img/part-2-interrupts-03.png)
 
 
-All three compare lines (50, 130, 210) are below 256, so RST8 stays 0. If you split below the bad-line range you must remember badlines steal cycles ([Appendix H §H.2](appendix-h-timing.md)); for plain colour changes that only adds to the jitter discussed next.
+All three compare lines (0, 106, 196) are below 256, so RST8 stays 0. They divide PAL's 312-line frame into roughly even thirds of the visible screen; the blue split is taken at line 0 (in the vertical blank) so the bottom green band carries cleanly through to the top with no stray sliver. If you split below the bad-line range you must remember badlines steal cycles ([Appendix H §H.2](appendix-h-timing.md)); for plain colour changes that only adds to the jitter discussed next.
 
 ### The jitter problem
 
-When the raster compare fires, the CPU does **not** drop everything instantly — it finishes the instruction it is currently executing first. 6502 instructions take 2–7 cycles, so the handler starts somewhere within a **0–7 cycle** window after the compare line begins. Since one CPU cycle = 8 pixels ([Appendix H §H.4](appendix-h-timing.md)), the colour change can land anywhere across roughly 56 horizontal pixels. For a full-width colour band the *top edge* of the band therefore jitters left/right line-to-line — visible as a fuzzy, flickering boundary.
+When the raster compare fires, the CPU does **not** drop what it is doing instantly — it first finishes the instruction in progress. 6502 instructions take 2–7 cycles, so the handler starts somewhere inside a window as wide as the longest instruction that might be running. In a tight `loop: jmp loop` busy-wait every iteration is 3 cycles, so entry lands within a **0–2 cycle** window; over arbitrary code it stretches toward 7. On top of that comes fixed overhead — up to 2 cycles to finish the current instruction, then 7 cycles for the CPU's interrupt sequence (push PC and status, fetch the vector) — so by the time your first handler instruction runs you are already a fair way into the line.
 
-For coarse effects you ignore it. For cycle-exact effects (opening borders, FLI, smooth raster bars) you must remove it: the technique is the **double IRQ stabiliser**.
+Since one CPU cycle = 8 pixels ([Appendix H §H.4](appendix-h-timing.md)), that entry window smears the colour write across up to ~56 horizontal pixels. For a full-width band the *top edge* wobbles left/right from frame to frame — a fuzzy, flickering boundary.
+
+For coarse effects you live with it. For cycle-exact effects — opening the side borders, FLI, sprite stretching, smooth raster bars — you must remove it. The standard technique is the **double-IRQ stabiliser**.
 
 ### The double-IRQ stabiliser
 
-The idea:
+The trick spends a whole rasterline turning that ragged entry into a known cycle, in two stages.
 
-1. **First IRQ** fires on line *N−1* (one line *before* the target). It does almost nothing except re-arm a **second** raster IRQ on line *N*, then deliberately spins until the very end of line *N−1*.
-2. While spinning, the first handler does `CLI` so the CPU is ready to take the second IRQ the moment it triggers. Now the entry jitter is at most the length of whatever single instruction is executing during the wait.
-3. **Second IRQ** fires on line *N*. Because the first handler timed the wait so the CPU is sitting on short, equal-length instructions, the second entry lands within a 1-cycle window — effectively jitter-free for the rest of the handler, which then does the actual stable work.
+**Stage 1 — collapse the jitter to one cycle.** Take a *first* raster IRQ on the line *before* the one you care about. It enters with the full jitter but does almost nothing: it points the IRQ vector at a *second* handler, arms a raster IRQ for the target line, runs `cli`, then executes a short run of 2-cycle `NOP`s. The second compare fires at a *fixed* point — the start of the target line — while the CPU is somewhere in that NOP stream. Because every instruction in the stream is exactly 2 cycles, the CPU can only ever be 0 or 1 cycle into one when the interrupt is recognised. So however bad the first entry was, the **second** handler enters with at most **one cycle** of jitter.
 
-The classic trick to collapse the remaining slack: after acknowledging in the first handler, execute a known number of cycles so that when the second IRQ becomes possible the CPU is mid-way through a stream of 2-cycle `NOP`s (or compares the live raster value and burns the difference). A common, compact form double-checks `$D012` to absorb the last cycle of uncertainty.
-
-The program below stabilises a single split. **On screen you should see:** the top portion of the screen has a **light blue** background and border; below the split line the background and border turn **yellow**. The boundary between them is a single, perfectly straight, rock-steady horizontal line (no shimmer), about two-thirds of the way down.
+**Stage 2 — kill the last cycle.** One cycle of slack is still one cycle. Remove it by asking the VIC where it is. Burn a precise, fixed number of cycles, then read `$D012` twice back-to-back:
 
 ```asm
-// stable-raster.asm  --  one rock-steady split using a stabilised raster IRQ
-*=$0801
-BasicUpstart2(main)
+        ...timed delay...      // lands the read pair across the line boundary
+        lda $d012              // reads near the end of the line
+        cmp $d012              // reads ~4 cycles later, just into the next line
+        beq *+2                // +1 cycle iff the counter had NOT ticked yet
+```
 
-.const SPLIT  = 180         // line where the colour changes to yellow
-.const TOPSET = 10          // line where we (re)set the top colour each frame
+The two reads are four cycles apart, and the delay is tuned so the rasterline boundary falls *between* them: the `lda` catches the old line number, the `cmp` the new one. Now the surviving one-cycle ambiguity decides the result. If the counter ticked between the reads they differ, `beq` falls through (2 cycles); if the pair landed a cycle early so both reads caught the old value, they match and `beq` is taken (3 cycles). That taken/not-taken difference is exactly the one cycle of slack, so both possible timings converge onto the same cycle. From here you know precisely which cycle of which line you are on, and can count cycles to anywhere on screen.
+
+> **The reads must straddle the boundary.** This only corrects anything if the line counter ticks *between* the two reads. Place them mid-line and both return the same value, `beq` is always taken, and the "correction" is a constant delay that fixes nothing. The timed delay before them is what slides the pair onto the cycle-62→0 edge — which is exactly what the original code in this section got wrong.
+>
+> **Mind the page boundary.** That `beq *+2` assumes a taken branch costs exactly 3 cycles. A branch that crosses a page boundary costs **4**, which breaks the correction. It rarely happens, but if a split misbehaves, disassemble and check the branch is not sitting across a `$xxFF` byte.
+
+**Why bank out the KERNAL.** Those cycle counts only hold if interrupt *entry* is deterministic. Going through the KERNAL's `$0314` vector adds its wedge on every IRQ and — worse — leaves the CIA timer interrupt firing through the same vector at unpredictable lines. Cycle-exact code therefore takes the **hardware** IRQ vector at `$FFFE/$FFFF`, which the CPU uses directly once the ROM is banked out (`$01 = $35`, leaving I/O mapped). Entry is then the same 7-cycle sequence every single time.
+
+**A stack subtlety.** The second IRQ fires *inside* the first, so its return frame is pushed on top of the first one's. The first handler runs `tsx` to remember the stack pointer; the second runs `txs` at its top to restore it, discarding the nested frame so a single `rti` returns cleanly to the interrupted main program.
+
+The program below puts it together: a top-of-frame IRQ paints the upper colour and arms the stabiliser; the stabilised IRQ draws a single rock-steady split. **On screen you should see:** light blue from the top, **yellow** below the split, with the boundary a single straight, shimmer-free horizontal line about two-thirds of the way down.
+
+```asm
+// stable-raster.asm  --  one rock-steady split using the double-IRQ stabiliser
+*=$0801
+BasicUpstart2(start)
 
 *=$0810
-main:
+.const LINE = 176           // stabiliser fires here; the yellow split lands on LINE+1
+.const TOP  = 8             // top-of-frame line where we restore the upper colour
+
+start:
+        jsr $ff81           // KERNAL: init VIC + clear screen, before we bank it out
         sei
-        lda #$7f
-        sta $dc0d           // disable CIA#1 timer IRQ
-        lda $dc0d           // clear pending CIA flag
-
-        lda #$0e            // light blue
-        sta $d020
-        sta $d021
-
-        lda #<irqTop
-        sta $0314
-        lda #>irqTop
-        sta $0315
-
+        lda #$35            // bank out KERNAL + BASIC ROM (I/O still mapped at $d000)
+        sta $01
+        lda #<irqTop        // hardware IRQ vector -> deterministic entry
+        ldy #>irqTop
+        sta $fffe
+        sty $ffff
         lda #$01
         sta $d01a           // enable raster IRQ
-        lda #TOPSET
+        lda #$7f
+        sta $dc0d
+        sta $dd0d           // disable BOTH CIA timer IRQs
+        lda $dc0d
+        lda $dd0d           // clear any pending CIA flags
+        lda #$1b
+        sta $d011           // RST8 = 0, standard text mode
+        lda #$01
+        sta $d019           // ack
+        lda #TOP
         sta $d012
-        lda $d011
-        and #$7f
-        sta $d011           // RST8 = 0
-        lda #$01
-        sta $d019
         cli
-loop:   jmp loop
+        jmp *               // main program: just spin; the IRQs do everything
 
-// --- Top-of-frame IRQ: set the upper colour, arm the pre-split IRQ ---
+// --- Top of frame: restore the upper colour, arm the stabiliser ---
 irqTop:
-        lda #$01
-        sta $d019
+        pha
+        txa
+        pha
+        tya
+        pha
         lda #$0e            // light blue for the top
         sta $d020
         sta $d021
-        lda #<irqA
-        sta $0314
-        lda #>irqA
-        sta $0315
-        lda #SPLIT-1        // first IRQ one line early
+        lda #<irq1
+        ldy #>irq1
+        sta $fffe
+        sty $ffff
+        lda #LINE
         sta $d012
-        jmp $ea81           // RTI via KERNAL
-
-// --- First (unstable) IRQ on SPLIT-1: arm the stabiliser, burn the line ---
-irqA:
         lda #$01
         sta $d019
-        lda #<irqB
-        sta $0314
-        lda #>irqB
-        sta $0315
-        lda #SPLIT
-        sta $d012
-        cli                 // let irqB interrupt us
-        .fill 24, $ea       // 24 NOPs: CPU is on 2-cycle ops when irqB is due
+        pla
+        tay
+        pla
+        tax
+        pla
+        rti
 
-// --- Second (stabilised) IRQ on SPLIT ---
-irqB:
+// --- First (unstable) IRQ on LINE: run the stabiliser, then split ---
+irq1:
+        pha
+        txa
+        pha
+        tya
+        pha
+        lda #<irq2          // arm the second IRQ one line down...
+        sta $fffe
+        lda #>irq2
+        sta $ffff
+        inc $d012
         lda #$01
-        sta $d019
-        lda $d012           // equalise the last cycle of jitter
-        cmp $d012
-        beq *+2
+        sta $d019           // ack
+        tsx                 // remember the stack pointer for the frame collapse
+        cli
+        nop; nop; nop; nop; nop; nop; nop; nop   // 2-cycle ops: irq2 enters <=1 cycle off
+
+// --- Second (stabilised) IRQ on LINE+1 ---
+irq2:
+        txs                 // discard the nested IRQ frame
+        ldx #$08            // burn a precise number of cycles so that...
+        dex
+        bne *-1
+        bit $00
+        lda $d012           // ...this read latches the old line and...
+        cmp $d012           // ...this one lands on the line boundary
+        beq *+2             // equalise the last cycle -> now cycle-exact
         lda #$07            // yellow from here down
         sta $d020
         sta $d021
         lda #<irqTop        // back to the top IRQ for the next frame
-        sta $0314
-        lda #>irqTop
-        sta $0315
-        lda #TOPSET
+        ldy #>irqTop
+        sta $fffe
+        sty $ffff
+        lda #TOP
         sta $d012
-        jmp $ea81
+        lda #$01
+        sta $d019
+        pla
+        tay
+        pla
+        tax
+        pla
+        rti
 ```
 
-![The top portion of the screen has a light blue background and border; below the split line the background and border tur](img/part-2-interrupts-04.png)
+![The top of the screen is light blue, the bottom is yellow, with a single perfectly straight, rock-steady horizontal boundary between them.](img/part-2-interrupts-04.png)
 
+The heart of `irq2` is the `ldx #$08 / dex / bne *-1 / bit $00` delay *before* the two `$D012` reads. Those instructions burn a precise number of cycles so the `lda`/`cmp` pair straddles the cycle where the line counter ticks; the `bit $00` is the fine adjustment that matches PAL's 63-cycle line (NTSC's 65-cycle line wants a different pad). Everything after `beq *+2` runs at a fixed cycle, so the colour write hits the same point on the line every frame and the edge stays rock-steady.
 
-To make the top return to light blue every frame, have `irqA` also write `#$0e` to `$D020/$D021` *before* arming `irqB`; because `irqA` runs near the bottom-1 line it sets the colour for the wrap to the top. (Try it: add `lda #$0e / sta $d020 / sta $d021` at the start of `irqA`.)
+The split line (`LINE = 176`) is chosen so that neither it nor `LINE+1` is a [badline](appendix-h-timing.md) — `176` and `177` give the same `mod 8` residues the delay was calibrated against. Land the stabiliser on a badline and the VIC steals ~40 cycles mid-handler, throwing the count off; that is what the original `SPLIT = 180` did (line 179 *is* a badline), masking the timing. Keep the stabiliser off badlines, or budget for the stolen cycles explicitly.
 
-The `lda $d012 / cmp $d012 / beq *+2` idiom is the cheapest standard stabiliser tail: the read+compare consumes the residual 1-cycle ambiguity left after the NOP stream, and the conditional branch's taken/not-taken cycle difference cancels the last possible offset. The result is a boundary fixed to a single pixel column line after line.
+> **Credit.** The stabiliser here is the classic **stable raster routine** documented on [Codebase64](https://codebase64.org/doku.php?id=base:stable_raster_routine); this hardware-vector form — the `tsx`/`txs` frame trick and the `ldx`/`dex`/`bne` + `bit $00` delay — follows the clear walk-through on the [Breeding Breeding blog](https://breedingbreeding.blogspot.com/2015/05/assembly-stable-raster-on-c64.html). Almost every demo carries some version of it; reuse it freely.
+
+Once you have a stable raster, the classic way to *prove* it is full-width raster bars: change `$D020`/`$D021` once per scanline for many lines and the colour bands come out with razor-straight edges. Any residual jitter shows instantly as a ragged left edge.
 
 **Pitfalls**
 - **Forgetting to acknowledge `$D019`.** Without `lda #$01 / sta $d019` the raster flag stays set and the IRQ re-fires immediately, hanging the machine. Acknowledge in *every* handler.
 - **Confusing `$D019` (acknowledge) with `$D01A` (enable).** Write 1s to `$D019` to *clear* flags; set bit 0 of `$D01A` once to *enable* the source.
 - **Ignoring RST8.** For any compare line ≥ 256 you must set `$D011` bit 7, and you must read-modify-write `$D011` (it shares YSCROLL/DEN). Clobbering it can blank the screen or shift it.
-- **Not disabling the CIA timer.** If you leave `$DC0D` alone the KERNAL's 1/50s timer IRQ keeps firing through your vector at unpredictable lines, wrecking timing. Write `$7F` to `$DC0D` and read it once.
-- **Register corruption.** The KERNAL's `$EA31` exit restores registers it saved; if you take over the vector you must save/restore A/X/Y yourself and exit via `$EA81`, or use `$EA31` consistently.
-- **Badlines and sprites add jitter** ([Appendix H §H.2/§H.3](appendix-h-timing.md)). A split on a badline row loses ~40 cycles; budget for it or move the split off the badline.
-- **NTSC vs PAL.** Cycle padding (the NOP count, 63 vs 65 cycles/line) and line counts differ ([Appendix H §H.1](appendix-h-timing.md)); stabiliser timing tuned on PAL needs adjustment on NTSC.
+- **Not disabling the CIA timers.** If you leave `$DC0D`/`$DD0D` alone the KERNAL's 1/50s timer IRQ keeps firing at unpredictable lines, wrecking the timing. Write `$7F` to both and read them once.
+- **Register corruption with the hardware vector.** Taking the `$FFFE` vector means *you* enter the handler with no KERNAL wedge — you must save and restore A/X/Y yourself (`pha`/`txa`/… then `pla`) and exit with `rti`, not `$EA81`. And once `$01 = $35` the ROMs are gone, so no KERNAL/BASIC calls until you bank them back.
+- **Putting the stabiliser on a badline.** A split on a badline row loses ~40 cycles ([Appendix H §H.2/§H.3](appendix-h-timing.md)), which throws off the calibrated delay. Choose the line so neither it nor the line below is a badline, or budget for the stolen cycles.
+- **NTSC vs PAL.** Cycle padding (the delay length, 63 vs 65 cycles/line) and line counts differ ([Appendix H §H.1](appendix-h-timing.md)); a stabiliser tuned on PAL needs the pad adjusted for NTSC.
 
 **Go deeper:** Christian Bauer's [VIC-II article](https://www.cebix.net/VIC-Article.txt) (raster compare and the stable-raster derivation); register details in [Appendix C](appendix-c-vic-registers.md) and cycle/timing mechanics in [Appendix H](appendix-h-timing.md).
 
