@@ -29,3 +29,6 @@ node_modules/
 Thumbs.db
 *.swp
 *~
+
+# local scratch / playground (build artifacts already ignored)
+useit/
