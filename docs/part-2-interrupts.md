@@ -247,7 +247,7 @@ irq:
 counter:        .byte 0
 ```
 
-**What you should see:** the border ($D020) flickers rapidly through all 16 colours — it changes every frame (60 times a second on NTSC, ~50 on PAL), cycling 0,1,2,...,15,0,... continuously, producing a fast strobing rainbow border. The centre of the screen stays as the normal light-blue BASIC screen with the READY. prompt, because we chained to $EA31 and the keyboard/cursor still work. The change is so fast it reads as a shimmering mix of colours; slow it down by only changing the border every Nth frame if you want to verify distinct colours.
+**What you should see:** the border ($D020) flickers rapidly through all 16 colours — it changes every frame (60 times a second on NTSC, ~50 on PAL), cycling 0,1,2,...,15,0,... continuously, producing a fast strobing rainbow border. The centre of the screen stays as the normal light-blue BASIC screen with the READY. prompt, and because we chained to $EA31 the KERNAL machinery (jiffy clock, keyboard scan) keeps ticking — but the cursor does **not** blink and keys are not echoed, because the main program is trapped in `loop: jmp loop` and BASIC's screen editor never runs (see the `rts` discussion in [§2.4](#24-cia-timers--replacing-the-system-irq)). The change is so fast it reads as a shimmering mix of colours; slow it down by only changing the border every Nth frame if you want to verify distinct colours.
 
 Why this works without touching $D019 or $DC0D directly: we never enabled a VIC IRQ, so the only IRQ firing is CIA #1 Timer A, and the `jmp $ea31` lets the KERNAL acknowledge it (by reading $DC0D) as part of its normal jiffy/keyboard processing.
 
@@ -847,6 +847,13 @@ This program reads joystick port 2 every frame and moves a single character (a s
                 .const JOY2     = $dc00     // CIA #1 PRA
                 .const BORDER   = $d020
                 .const COLRAM   = $d800     // colour matrix
+                // (ptr),y indirect addressing only works with ZERO PAGE
+                // pointers -- $fb-$fe is free for user programs. A pointer
+                // stored as a .word in the code body assembles WITHOUT ERROR
+                // (KickAssembler truncates the address to its low byte) and
+                // then writes through garbage. Keep pointers in zero page.
+                .label ptr     = $fb        // -> screen cell of the block
+                .label colptr  = $fd        // -> its colour-RAM cell
 
 *=$0801 "BASIC"
                 BasicUpstart2(start)        // SYS 2061 stub
@@ -973,9 +980,10 @@ yok:
 xpos:           .byte 0
 ypos:           .byte 0
 joyval:         .byte 0
-ptr:            .word 0
-colptr:         .word 0
 ```
+
+![Output of the example in A complete joystick demo](img/part-2-interrupts-06.png)
+
 
 > **Note on the colour pointer.** The colour matrix at `$D800` sits exactly
 > `$D800 - $0400 = $D400` above the screen matrix, so the high byte of the colour
