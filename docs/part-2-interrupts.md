@@ -688,18 +688,34 @@ For ~5 Hz on PAL we need about `19656 * 50 / 5 ≈ 196560` cycles per tick — t
 // CIA #1 Timer A interrupt: flash the border ~5 times/second.
 // KickAssembler v5.x
 *=$0801
-BasicUpstart2(start)
-
-*=$0810
+BasicUpstart2(init)
 
 .const ICR  = $dc0d     // CIA #1 Interrupt Control/Status
 .const CRA  = $dc0e     // CIA #1 Control Register A
 .const TALO = $dc04     // Timer A latch/counter low
 .const TAHI = $dc05     // Timer A latch/counter high
+.const TARGET = $c000   // where the resident handler runs (free RAM)
 
 // One PAL frame = 19656 cycles (Appendix H). Latch value = period-1.
 .const PERIOD = 19656 - 1
 
+// ---- Loader (stays low in the BASIC area) -------------------------------
+// Copy the resident block up to $c000, then jump into it. Because the *file*
+// is small, LOAD leaves VARTAB just past this loader, so BASIC keeps all its
+// memory and you can still edit the program. See the Pitfall below.
+*=$0810
+init:
+        ldx #residentEnd - residentStart
+!copy:  lda residentStart - 1, x
+        sta TARGET - 1, x
+        dex
+        bne !copy-
+        jmp TARGET                  // installer ends in rts -> back to BASIC
+
+// ---- Resident block: assembled for $c000, but stored low so it ships in a
+//      small .prg; the loader above copies it up. -------------------------
+residentStart:
+.pseudopc TARGET {
 start:
         sei
 
@@ -733,7 +749,7 @@ start:
         sta counter
 
         cli                 // interrupts on; only Timer A is armed
-loop:   jmp loop            // main program does nothing; the IRQ does the work
+        rts                 // hand control back to BASIC; the IRQ keeps running
 
 // ---- Interrupt handler --------------------------------------------------
 // The KERNAL's ROM handler has already pushed A/X/Y for us before JMP($0314),
@@ -753,12 +769,24 @@ done:
         jmp $ea31           // KERNAL: restore A/X/Y from stack and RTI
 
 counter: .byte 0
+}
+residentEnd:
 ```
 
 ![A normal blue BASIC screen with the usual READY](img/part-2-interrupts-05.png)
 
 
 **What you should see:** a normal blue BASIC screen with the usual `READY.` text, and the **border colour cycling rapidly through all 16 colours**, changing roughly five times per second (a visible flicker of border colours). The screen interior and text stay unchanged. Because we left the KERNAL IRQ chain intact via `JMP $EA31`, the cursor still blinks and the keyboard still responds.
+
+> **Why `rts` and not `loop: jmp loop`?** We were entered via `SYS` (from `BasicUpstart2`), so `rts` returns to the BASIC `READY.` prompt while our IRQ vector stays patched — the timer keeps flashing the border in the background. That hand-back is what makes the cursor blink and the keyboard work, and it is easy to get wrong. The cursor blink inside `$EA31` is gated on the flag `$CC` (0 = blink, nonzero = cursor off), and **only BASIC's screen-editor input loop sets `$CC` to 0** while it waits at `READY.`. If you instead trap the CPU in `loop: jmp loop`, BASIC's editor never runs, `$CC` stays nonzero, and `$EA31` skips the blink every frame — the keys you press still get scanned into the buffer, but nothing echoes them, so the machine looks dead even though the border keeps flashing. Chaining to `$EA31` keeps the KERNAL machinery *available*; it does not make the editor *run*. A demo that wants to own the machine does the opposite — `loop: jmp loop` precisely so BASIC stays out of the way — but then there is no blinking cursor. You get one or the other, not both.
+
+> **Pitfall — keep resident code out of BASIC's RAM, but don't poison VARTAB doing it.** Two traps here, and the obvious fix for the first walks straight into the second.
+>
+> *Trap 1 — code in the program area gets clobbered.* If you park the handler at `$0810` (right after the `BasicUpstart2` stub) it lives inside BASIC's program/variable RAM. When the KERNAL `LOAD`s a `.prg` it sets VARTAB (`$2D/$2E`, top of BASIC program) to the end of the loaded file, so your code is counted as part of the program body. The instant you type a line (`10 REM HELLO` + RETURN), BASIC inserts it, which **relinks and physically moves every byte from the edit point up to VARTAB** — straight through your handler. The timer keeps jumping through `$0314` into what are now shuffled BASIC tokens, the border freezes, the machine often hangs. You never lost the interrupt — you lost *the code the vector points at*.
+>
+> *Trap 2 — `*=$c000` alone makes a poisoned 47 KB file.* The `$c000–$cfff` block is 4 KB that neither BASIC nor the KERNAL touches, so it is the right home. But if you just write `*=$c000` after the `$0801` stub, KickAssembler emits **one** PRG spanning `$0801–$c0xx` and zero-fills the `$080d–$bfff` gap — a ~47 KB file. Worse than fat: `LOAD` sets VARTAB to the end of that file (`≈$c042`), which is *above* the top of BASIC RAM (`$9fff`). BASIC now thinks it has negative free memory, so the first edit you attempt gives **`?OUT OF MEMORY ERROR`**. So that variant cannot be edited either — it just fails a different way.
+>
+> *The fix — a relocating loader.* Keep the *file* small by storing the resident block low (so VARTAB lands just past the loader, leaving BASIC its full memory) and **copy it up to `$c000` at startup**. KickAssembler's `.pseudopc $c000 { … }` assembles the block's labels for `$c000` while emitting the bytes at their low load address; a short copy loop moves `residentStart..residentEnd` up before `jmp`ing into it. The result is the ~90-byte PRG above: border flashes, cursor blinks, and you can edit the BASIC program freely because the live handler sits at `$c000`, untouched. (Other routes to the same place: lower MEMSIZ `$37/$38` and live below it, or ship two files / a `.d64`.)
 
 ### Why `JMP $EA31` instead of `RTI`
 
