@@ -247,6 +247,9 @@ irq:
 counter:        .byte 0
 ```
 
+![A normal BASIC screen with the border caught on one of the 16 colours it cycles through every frame](img/part-2-interrupts-02.png)
+
+
 **What you should see:** the border ($D020) flickers rapidly through all 16 colours — it changes every frame (60 times a second on NTSC, ~50 on PAL), cycling 0,1,2,...,15,0,... continuously, producing a fast strobing rainbow border. The centre of the screen stays as the normal light-blue BASIC screen with the READY. prompt, and because we chained to $EA31 the KERNAL machinery (jiffy clock, keyboard scan) keeps ticking — but the cursor does **not** blink and keys are not echoed, because the main program is trapped in `loop: jmp loop` and BASIC's screen editor never runs (see the `rts` discussion in [§2.4](#24-cia-timers--replacing-the-system-irq)). The change is so fast it reads as a shimmering mix of colours; slow it down by only changing the border every Nth frame if you want to verify distinct colours.
 
 Why this works without touching $D019 or $DC0D directly: we never enabled a VIC IRQ, so the only IRQ firing is CIA #1 Timer A, and the `jmp $ea31` lets the KERNAL acknowledge it (by reading $DC0D) as part of its normal jiffy/keyboard processing.
@@ -1041,13 +1044,21 @@ loop:
 notpressed:
                 lda #6                      // blue
 show:
+                cmp last                    // only write $D020 when the colour
+                beq loop                    //   actually changes (see note)
+                sta last
                 sta BORDER
                 jmp loop
+
+last:           .byte $ff                   // shadow of the last border write
 ```
+
+![The border is blue](img/part-2-interrupts-07.png)
+
 
 **What you should see:** the border is blue. While you hold the spacebar the border turns green; releasing it returns it to blue. Because we did `sei` and never re-enable interrupts, the normal cursor blink and RUN/STOP stop working - reset the machine to exit. (A real program would restore DDRA/DDRB, write $7F to $DC00, and `cli` before returning.)
 
-### The easy way: GETIN ($FFE4)
+> **Why the `last` shadow byte?** An earlier version of this loop wrote `$D020` on every pass — thousands of writes per frame. On the **8565** VIC-II (the C64C revision, and what VICE emulates by default) every write to a `$D02x` colour register briefly emits the *grey* colour for one pixel, so the hammering sprays grey dots across the whole frame — the infamous **grey-dot bug**. Writing only on change keeps the screen clean on all models. We compare against a RAM shadow rather than `$D020` itself because reading a colour register returns the unused upper bits set (`$F6`, not `$06`), so a direct `cmp` would never match.
 
 For ordinary "what did the user type" input you should not hand-scan at all. The KERNAL's IRQ already runs SCNKEY ($FF9F) every frame, debounces keys, applies SHIFT/CTRL/C= and stuffs PETSCII codes into a 10-byte keyboard buffer. **GETIN ($FFE4)** pulls one byte from that buffer into `.A`, returning `0` when the buffer is empty. PETSCII codes are listed in [Appendix G](appendix-g-petscii.md).
 
@@ -1064,6 +1075,9 @@ wait:           jsr $ffe4                   // GETIN -> A (0 if no key)
                 jmp wait
 done:           rts
 ```
+
+![Keys you press appear on screen as you type; pressing RUN/STOP returns to BASIC (READY.)](img/part-2-interrupts-08.png)
+
 
 **What you should see:** keys you press appear on screen as you type; pressing RUN/STOP returns to BASIC (READY.). Use GETIN for menus and text entry; use the matrix scan only when you need multiple simultaneous keys (games) or keys the buffer collapses.
 
